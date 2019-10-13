@@ -1,0 +1,3 @@
+[submodule "adafruit-motor-shield-v2-lib"]
+	path = adafruit-motor-shield-v2-lib
+	url = https://github.com/FedorChervyakov/adafruit-motor-shield-v2-lib.git
