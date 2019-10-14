@@ -38,7 +38,9 @@
 
 /* Private includes -----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "stm32wbxx_hal.h"
+#include "main.h"
+#include "sensors.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -73,7 +75,7 @@ const osThreadAttr_t ThreadCliProcess_attr = {
  };
 
 /* USER CODE BEGIN PD */
-
+#define C_RESOURCE_PH           "ph"
 /* USER CODE END PD */
 
 /* Private macros ------------------------------------------------------------*/
@@ -110,6 +112,22 @@ static void APP_THREAD_FreeRTOSSendCLIToM0Task(void *argument);
 
 /* USER CODE BEGIN PFP */
 
+static void APP_THREAD_ph_ReqHandler(otCoapHeader   * pHeader,
+                            otMessage               * pMessage,
+                            const otMessageInfo     * pMessageInfo);
+static otError APP_THREAD_ph_RespSend(otCoapHeader  * pRequestHeader,
+                            const otMessageInfo     * pMessageInfo);
+static otError APP_THREAD_MethodNotAllowed_RespSend(otCoapHeader  * pRequestHeader,
+                            const otMessageInfo     * pMessageInfo);
+static void APP_THREAD_DummyReqHandler(void    * p_context,
+                            otCoapHeader        * pHeader,
+                            otMessage           * pMessage,
+                            const otMessageInfo * pMessageInfo);
+static void APP_THREAD_DummyRespHandler(void    * p_context,
+                            otCoapHeader        * pHeader,
+                            otMessage           * pMessage,
+                            const otMessageInfo * pMessageInfo,
+                            otError             Result);
 /* USER CODE END PFP */
 
 /* Private variables -----------------------------------------------*/
@@ -139,7 +157,13 @@ static osThreadId_t OsTaskMsgM0ToM4Id;      /* Task managing the M0 to M4 messag
 static osThreadId_t OsTaskCliId;            /* Task used to manage CLI comamnd             */
 
 /* USER CODE BEGIN PV */
+static otCoapResource OT_Resource_ph = {C_RESOURCE_PH,
+                            APP_THREAD_DummyReqHandler,
+                            (void*) APP_THREAD_ph_ReqHandler,
+                            NULL};
 
+static otCoapHeader  OT_Header = {0};
+static otMessage   * pOT_Message = NULL;
 /* USER CODE END PV */
 
 /* Functions Definition ------------------------------------------------------*/
@@ -171,7 +195,7 @@ void APP_THREAD_Init( void )
   APP_THREAD_TL_THREAD_INIT();
 
   /* Configure UART for sending CLI command from M4 */
-  APP_THREAD_Init_UART_CLI();
+//  APP_THREAD_Init_UART_CLI();
 
   /* Send Thread start system cmd to M0 */
   ThreadInitStatus = SHCI_C2_THREAD_Init();
@@ -547,6 +571,8 @@ static otError APP_THREAD_ph_RespSend(otCoapHeader  * pRequestHeader,
                             const otMessageInfo     * pMessageInfo)
 {
     otError error = OT_ERROR_NONE;
+    float ph = 0;
+    char * str_ptr = NULL;
     do
     {
         otCoapHeaderInit(&OT_Header, OT_COAP_TYPE_ACKNOWLEDGMENT, OT_COAP_CODE_CONTENT);
@@ -563,8 +589,10 @@ static otError APP_THREAD_ph_RespSend(otCoapHeader  * pRequestHeader,
         {
             APP_THREAD_Error(ERR_NEW_MSG_ALLOC,error);
         }
+        
+        ph = getpH();
+        gcvt(ph, 5, str_ptr);
 
-        char * str_ptr = ADC_ChannelGet_str(1);
         error = otMessageAppend(pOT_Message, (void *) str_ptr, sizeof(char)*strlen(str_ptr));
         if (error != OT_ERROR_NONE)
         {
@@ -593,7 +621,7 @@ static otError APP_THREAD_ph_RespSend(otCoapHeader  * pRequestHeader,
  * @param pMessageInfo message info pointer
  * @retval None
  */
-otError APP_THREAD_MethodNotAllowed_RespSend(otCoapHeader  * pRequestHeader,
+static otError APP_THREAD_MethodNotAllowed_RespSend(otCoapHeader  * pRequestHeader,
                             const otMessageInfo     * pMessageInfo)
 {
     otError error = OT_ERROR_NONE;
@@ -806,7 +834,7 @@ static void RxCpltCallback(void)
   }
 
   /* Once a character has been sent, put back the device in reception mode */
-  HW_UART_Receive_IT(CFG_CLI_UART, aRxBuffer, 1U, RxCpltCallback);
+//  HW_UART_Receive_IT(CFG_CLI_UART, aRxBuffer, 1U, RxCpltCallback);
 }
 #endif /* (CFG_USB_INTERFACE_ENABLE != 0) */
 
@@ -893,7 +921,7 @@ void APP_THREAD_Init_UART_CLI(void)
 
   #if (CFG_USB_INTERFACE_ENABLE != 0)
   #else
-  HW_UART_Receive_IT(CFG_CLI_UART, aRxBuffer, 1, RxCpltCallback);
+//  HW_UART_Receive_IT(CFG_CLI_UART, aRxBuffer, 1, RxCpltCallback);
 #endif /* (CFG_USB_INTERFACE_ENABLE != 0) */
 }
 
@@ -929,7 +957,7 @@ void TL_THREAD_CliNotReceived( TL_EvtPacket_t * Notbuffer )
 #if (CFG_USB_INTERFACE_ENABLE != 0)
     VCP_SendData( l_CliBuffer->cmdserial.cmd.payload, l_size, HostTxCb);
 #else
-    HW_UART_Transmit_IT(CFG_CLI_UART, l_CliBuffer->cmdserial.cmd.payload, l_size, HostTxCb);
+//    HW_UART_Transmit_IT(CFG_CLI_UART, l_CliBuffer->cmdserial.cmd.payload, l_size, HostTxCb);
 #endif /*USAGE_OF_VCP */
   }
   else
