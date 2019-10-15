@@ -76,6 +76,8 @@ const osThreadAttr_t ThreadCliProcess_attr = {
 
 /* USER CODE BEGIN PD */
 #define C_RESOURCE_PH           "ph"
+#define C_RESOURCE_EC           "ec"
+#define C_RESOURCE_TEMP         "temp"
 /* USER CODE END PD */
 
 /* Private macros ------------------------------------------------------------*/
@@ -117,6 +119,16 @@ static void APP_THREAD_ph_ReqHandler(otCoapHeader   * pHeader,
                             const otMessageInfo     * pMessageInfo);
 static otError APP_THREAD_ph_RespSend(otCoapHeader  * pRequestHeader,
                             const otMessageInfo     * pMessageInfo);
+static void APP_THREAD_ec_ReqHandler(otCoapHeader   * pHeader,
+                            otMessage               * pMessage,
+                            const otMessageInfo     * pMessageInfo);
+static otError APP_THREAD_ec_RespSend(otCoapHeader  * pRequestHeader,
+                            const otMessageInfo     * pMessageInfo);
+static void APP_THREAD_temp_ReqHandler(otCoapHeader   * pHeader,
+                            otMessage               * pMessage,
+                            const otMessageInfo     * pMessageInfo);
+static otError APP_THREAD_temp_RespSend(otCoapHeader  * pRequestHeader,
+                            const otMessageInfo     * pMessageInfo);							
 static otError APP_THREAD_MethodNotAllowed_RespSend(otCoapHeader  * pRequestHeader,
                             const otMessageInfo     * pMessageInfo);
 static void APP_THREAD_DummyReqHandler(void    * p_context,
@@ -160,6 +172,14 @@ static osThreadId_t OsTaskCliId;            /* Task used to manage CLI comamnd  
 static otCoapResource OT_Resource_ph = {C_RESOURCE_PH,
                             APP_THREAD_DummyReqHandler,
                             (void*) APP_THREAD_ph_ReqHandler,
+                            NULL};
+static otCoapResource OT_Resource_ec = {C_RESOURCE_EC,
+                            APP_THREAD_DummyReqHandler,
+                            (void*) APP_THREAD_ec_ReqHandler,
+                            NULL};
+static otCoapResource OT_Resource_temp = {C_RESOURCE_TEMP,
+                            APP_THREAD_DummyReqHandler,
+                            (void*) APP_THREAD_temp_ReqHandler,
                             NULL};
 
 static otCoapHeader  OT_Header = {0};
@@ -350,6 +370,18 @@ static void APP_THREAD_DeviceConfig(void)
   }
   /* Add pH CoAP resource */
   error = otCoapAddResource(NULL, &OT_Resource_ph);
+  if (error != OT_ERROR_NONE)
+  {
+    APP_THREAD_Error(ERR_THREAD_COAP_ADD_RESSOURCE,error);
+  }
+  /* Add ec CoAP resource */
+  error = otCoapAddResource(NULL, &OT_Resource_ec);
+  if (error != OT_ERROR_NONE)
+  {
+    APP_THREAD_Error(ERR_THREAD_COAP_ADD_RESSOURCE,error);
+  }
+  /* Add temperature CoAP resource */
+  error = otCoapAddResource(NULL, &OT_Resource_temp);
   if (error != OT_ERROR_NONE)
   {
     APP_THREAD_Error(ERR_THREAD_COAP_ADD_RESSOURCE,error);
@@ -592,6 +624,180 @@ static otError APP_THREAD_ph_RespSend(otCoapHeader  * pRequestHeader,
         
         ph = getpH();
         gcvt(ph, 5, str_ptr);
+
+        error = otMessageAppend(pOT_Message, (void *) str_ptr, sizeof(char)*strlen(str_ptr));
+        if (error != OT_ERROR_NONE)
+        {
+            APP_THREAD_Error(ERR_THREAD_COAP_APPEND,error);
+            break;
+        }
+
+        error = otCoapSendResponse(NULL, pOT_Message, pMessageInfo);
+        if (error != OT_ERROR_NONE && pOT_Message != NULL)
+        {
+            otMessageFree(pOT_Message);
+            APP_THREAD_Error(ERR_THREAD_COAP_SEND_RESPONSE,error);
+        }
+
+
+    } while (false);
+
+    return error;
+}
+
+/**
+ * @brief This function is used to handle the EC requests
+ *
+ * @param pHeader header pointer
+ * @param pMessage message pointer
+ * @param pMessageInfo message info pointer
+ * @retval None
+ */
+static void APP_THREAD_ec_ReqHandler(otCoapHeader   * pHeader,
+                            otMessage               * pMessage,
+                            const otMessageInfo     * pMessageInfo)
+{
+    do
+    {
+        if (otCoapHeaderGetType(pHeader) == OT_COAP_TYPE_CONFIRMABLE &&
+            otCoapHeaderGetCode(pHeader) == OT_COAP_CODE_GET)
+        {
+            if (APP_THREAD_ec_RespSend(pHeader, pMessageInfo) != OT_ERROR_NONE)
+            {
+                APP_THREAD_Error(ERR_THREAD_COAP_SEND_RESPONSE, 0);
+            }
+        }
+        else
+        {
+            if (APP_THREAD_MethodNotAllowed_RespSend(pHeader, pMessageInfo) != OT_ERROR_NONE)
+            {
+                APP_THREAD_Error(ERR_THREAD_COAP_SEND_RESPONSE, 0);
+            }
+        }
+    } 
+    while (false);
+}
+
+/**
+ * @brief This function is used to send the EC response
+ *
+ * @param pHeader header pointer
+ * @param pMessage message pointer
+ * @param pMessageInfo message info pointer
+ * @retval None
+ */
+static otError APP_THREAD_ec_RespSend(otCoapHeader  * pRequestHeader,
+                            const otMessageInfo     * pMessageInfo)
+{
+    otError error = OT_ERROR_NONE;
+    float ec = 0;
+    char * str_ptr = NULL;
+    do
+    {
+        otCoapHeaderInit(&OT_Header, OT_COAP_TYPE_ACKNOWLEDGMENT, OT_COAP_CODE_CONTENT);
+        otCoapHeaderSetMessageId(&OT_Header, otCoapHeaderGetMessageId(pRequestHeader));
+        otCoapHeaderSetToken(&OT_Header,
+                            otCoapHeaderGetToken(pRequestHeader),
+                            otCoapHeaderGetTokenLength(pRequestHeader));
+        otCoapHeaderAppendContentFormatOption(&OT_Header,
+                            OT_COAP_OPTION_CONTENT_FORMAT_TEXT_PLAIN);
+        otCoapHeaderSetPayloadMarker(&OT_Header);
+
+        pOT_Message = otCoapNewMessage(NULL, &OT_Header);
+        if (pOT_Message == NULL)
+        {
+            APP_THREAD_Error(ERR_NEW_MSG_ALLOC,error);
+        }
+        
+        ec = getEC();
+        gcvt(ec, 5, str_ptr);
+
+        error = otMessageAppend(pOT_Message, (void *) str_ptr, sizeof(char)*strlen(str_ptr));
+        if (error != OT_ERROR_NONE)
+        {
+            APP_THREAD_Error(ERR_THREAD_COAP_APPEND,error);
+            break;
+        }
+
+        error = otCoapSendResponse(NULL, pOT_Message, pMessageInfo);
+        if (error != OT_ERROR_NONE && pOT_Message != NULL)
+        {
+            otMessageFree(pOT_Message);
+            APP_THREAD_Error(ERR_THREAD_COAP_SEND_RESPONSE,error);
+        }
+
+
+    } while (false);
+
+    return error;
+}
+
+/**
+ * @brief This function is used to handle the temperature requests
+ *
+ * @param pHeader header pointer
+ * @param pMessage message pointer
+ * @param pMessageInfo message info pointer
+ * @retval None
+ */
+static void APP_THREAD_temp_ReqHandler(otCoapHeader   * pHeader,
+                            otMessage               * pMessage,
+                            const otMessageInfo     * pMessageInfo)
+{
+    do
+    {
+        if (otCoapHeaderGetType(pHeader) == OT_COAP_TYPE_CONFIRMABLE &&
+            otCoapHeaderGetCode(pHeader) == OT_COAP_CODE_GET)
+        {
+            if (APP_THREAD_temp_RespSend(pHeader, pMessageInfo) != OT_ERROR_NONE)
+            {
+                APP_THREAD_Error(ERR_THREAD_COAP_SEND_RESPONSE, 0);
+            }
+        }
+        else
+        {
+            if (APP_THREAD_MethodNotAllowed_RespSend(pHeader, pMessageInfo) != OT_ERROR_NONE)
+            {
+                APP_THREAD_Error(ERR_THREAD_COAP_SEND_RESPONSE, 0);
+            }
+        }
+    } 
+    while (false);
+}
+
+/**
+ * @brief This function is used to send the temperature response
+ *
+ * @param pHeader header pointer
+ * @param pMessage message pointer
+ * @param pMessageInfo message info pointer
+ * @retval None
+ */
+static otError APP_THREAD_temp_RespSend(otCoapHeader  * pRequestHeader,
+                            const otMessageInfo     * pMessageInfo)
+{
+    otError error = OT_ERROR_NONE;
+    float temp = 0;
+    char * str_ptr = NULL;
+    do
+    {
+        otCoapHeaderInit(&OT_Header, OT_COAP_TYPE_ACKNOWLEDGMENT, OT_COAP_CODE_CONTENT);
+        otCoapHeaderSetMessageId(&OT_Header, otCoapHeaderGetMessageId(pRequestHeader));
+        otCoapHeaderSetToken(&OT_Header,
+                            otCoapHeaderGetToken(pRequestHeader),
+                            otCoapHeaderGetTokenLength(pRequestHeader));
+        otCoapHeaderAppendContentFormatOption(&OT_Header,
+                            OT_COAP_OPTION_CONTENT_FORMAT_TEXT_PLAIN);
+        otCoapHeaderSetPayloadMarker(&OT_Header);
+
+        pOT_Message = otCoapNewMessage(NULL, &OT_Header);
+        if (pOT_Message == NULL)
+        {
+            APP_THREAD_Error(ERR_NEW_MSG_ALLOC,error);
+        }
+        
+        temp = getTemperature();
+        gcvt(temp, 5, str_ptr);
 
         error = otMessageAppend(pOT_Message, (void *) str_ptr, sizeof(char)*strlen(str_ptr));
         if (error != OT_ERROR_NONE)
