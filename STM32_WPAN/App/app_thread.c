@@ -119,18 +119,22 @@ static void APP_THREAD_ph_ReqHandler(otCoapHeader   * pHeader,
                             const otMessageInfo     * pMessageInfo);
 static otError APP_THREAD_ph_RespSend(otCoapHeader  * pRequestHeader,
                             const otMessageInfo     * pMessageInfo);
+
 static void APP_THREAD_ec_ReqHandler(otCoapHeader   * pHeader,
                             otMessage               * pMessage,
                             const otMessageInfo     * pMessageInfo);
 static otError APP_THREAD_ec_RespSend(otCoapHeader  * pRequestHeader,
                             const otMessageInfo     * pMessageInfo);
+
 static void APP_THREAD_temp_ReqHandler(otCoapHeader   * pHeader,
                             otMessage               * pMessage,
                             const otMessageInfo     * pMessageInfo);
 static otError APP_THREAD_temp_RespSend(otCoapHeader  * pRequestHeader,
                             const otMessageInfo     * pMessageInfo);							
+
 static otError APP_THREAD_MethodNotAllowed_RespSend(otCoapHeader  * pRequestHeader,
                             const otMessageInfo     * pMessageInfo);
+
 static void APP_THREAD_DummyReqHandler(void    * p_context,
                             otCoapHeader        * pHeader,
                             otMessage           * pMessage,

@@ -29,6 +29,7 @@
 #include "hw_conf.h"
 #include "otp.h"
 #include "motor_shield.h"
+#include "sensors.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -38,31 +39,11 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-/* Size of ADC buffer */
-#define ADC_BUFFERSIZE      ((uint32_t) 4)
-#define ADC_COMPLETE_FLAG   ((uint32_t) 1)
-#define ADC_DELAY           ((uint32_t) 1000)   /* 1 Hz */
-
 #define MS_I2C_ADDRESS ((uint8_t) 0xC0)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-/**
-  * @brief  Macro to calculate the voltage (unit: mVolt)
-  *         corresponding to a ADC conversion data (unit: digital value).
-  * @note   ADC measurement data must correspond to a resolution of 12bits
-  *         (full scale digital value 4095). If not the case, the data must be
-  *         preliminarily rescaled to an equivalent resolution of 12 bits.
-  * @note   Analog reference voltage (Vref+) must be known from
-  *         user board environment.
-  * @param  __VREFANALOG_VOLTAGE__ Analog reference voltage (unit: mV)
-  * @param  __ADC_DATA__ ADC conversion data (resolution 12 bits)
-  *                       (unit: digital value).
-  * @retval ADC conversion data equivalent voltage value (unit: mVolt)
-  */
-#define __ADC_CALC_DATA_VOLTAGE(__VREFANALOG_VOLTAGE__, __ADC_DATA__)       \
-   (__ADC_DATA__) * (__VREFANALOG_VOLTAGE__) / DIGITAL_SCALE_12BITS
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -79,19 +60,10 @@ typedef StaticTask_t osStaticThreadDef_t;
 osThreadId_t defaultTaskHandle;
 uint32_t defaultTaskBuffer[ 128 ];
 osStaticThreadDef_t defaultTaskControlBlock;
-osThreadId_t readADCTaskHandle;
-uint32_t readADCTaskBuffer[ 128 ];
-osStaticThreadDef_t readADCTaskControlBlock;
 osThreadId_t ctrlPumpsTaskHandle;
 uint32_t ctrlPumpsTaskBuffer[ 128 ];
 osStaticThreadDef_t ctrlPumpsTaskControlBlock;
 /* USER CODE BEGIN PV */
-
-
-static volatile float ch1_mv;
-static volatile float ch2_mv;
-static volatile float ch3_mv;
-
 static MotorShield_dev MS;
 static pca9685_dev pca9685;
 static volatile uint8_t rxI2C_buffer[64];
@@ -107,7 +79,6 @@ static void MX_I2C1_Init(void);
 static void MX_RF_Init(void);
 static void MX_RTC_Init(void);
 void StartDefaultTask(void *argument);
-void readADC(void *argument);
 void controlPumps(void *argument);
 
 /* USER CODE BEGIN PFP */
@@ -122,8 +93,6 @@ static void Motor_Shield_Init(void);
 void delay_ms(uint16_t period);
 int8_t i2c_read(uint8_t dev_id, uint8_t reg_addr, uint8_t *reg_data, uint16_t len);
 int8_t i2c_write(uint8_t dev_id, uint8_t reg_addr, uint8_t *reg_data, uint16_t len);
-
-float * getADCChannel(uint8_t ch);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -201,17 +170,6 @@ int main(void)
   };
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
-  /* definition and creation of readADCTask */
-  const osThreadAttr_t readADCTask_attributes = {
-    .name = "readADCTask",
-    .stack_mem = &readADCTaskBuffer[0],
-    .stack_size = sizeof(readADCTaskBuffer),
-    .cb_mem = &readADCTaskControlBlock,
-    .cb_size = sizeof(readADCTaskControlBlock),
-    .priority = (osPriority_t) osPriorityNormal,
-  };
-  readADCTaskHandle = osThreadNew(readADC, NULL, &readADCTask_attributes);
-
   /* definition and creation of ctrlPumpsTask */
   const osThreadAttr_t ctrlPumpsTask_attributes = {
     .name = "ctrlPumpsTask",
@@ -224,7 +182,7 @@ int main(void)
   ctrlPumpsTaskHandle = osThreadNew(controlPumps, NULL, &ctrlPumpsTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
+  sensors_Init();
   /* USER CODE END RTOS_THREADS */
 
   /* Init code for STM32_WPAN */
@@ -727,7 +685,7 @@ static void Motor_Shield_Init (void)
         pca9685 = pca9685_init_struct(MS_I2C_ADDRESS,
                                       (pca9685_i2c_com_fptr_t) i2c_write,
                                       (pca9685_i2c_com_fptr_t) i2c_read,
-                                      delay_ms, 1200);
+                                      delay_ms, 1500);
         MS.pca9685 = &pca9685;
         MS.driver1_mode = TB6612_2DC_MODE;
         MS.driver2_mode = TB6612_2DC_MODE;
@@ -876,17 +834,6 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *I2cHandle)
 }
 
 
-/**
-  * @brief  ADC conversion completed callback
-  * @param  hadc: ADC handle
-  * @retval None
-  */
-void HAL_ADC_ConvCpltCallback ( ADC_HandleTypeDef *hadc)
-{
-    HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
-    /* Set event flag to indicate ADC completion */
-    osThreadFlagsSet(readADCTaskHandle, ADC_COMPLETE_FLAG);
-}		/* -----  end of function HAL_ADC_ConvCpltCallback  ----- */
 
 /* USER CODE END 4 */
 
@@ -908,66 +855,6 @@ void StartDefaultTask(void *argument)
   /* USER CODE END 5 */ 
 }
 
-/* USER CODE BEGIN Header_readADC */
-/**
-* @brief Function implementing the readADCTask thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_readADC */
-void readADC(void *argument)
-{
-  /* USER CODE BEGIN readADC */
-  /* Infinite loop */
-  uint16_t uhADCxConvertedData[ADC_BUFFERSIZE];
-  uint16_t int_ref;
-  /* Infinite loop */
-  for(;;)
-  {
-    HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_RESET);
-    /*## Start ADC conversions ###############################################*/
-    /* Clear ADC conversion flag */
-    osThreadFlagsClear(ADC_COMPLETE_FLAG);
-
-    /* Start ADC conversion with DMA */
-    if ( HAL_ADC_Start_DMA(&hadc1, (uint32_t *) uhADCxConvertedData, ADC_BUFFERSIZE) != HAL_OK)
-    {
-        /* ADC conversion start error */
-        Error_Handler();
-    }
-
-    /* Wait till conversion is done */
-    osThreadFlagsWait(ADC_COMPLETE_FLAG, osFlagsWaitAny, osWaitForever);
-
-    /*## Stop ADC conversions ################################################*/
-    /* Stop ADC conversion with DMA */
-    if ( HAL_ADC_Stop_DMA(&hadc1) != HAL_OK)
-    {
-        /* ADC conversion stop error */
-        Error_Handler();
-    }
-
-    /*## Compute voltages from adc readings ##################################*/
-    int_ref = __LL_ADC_CALC_VREFANALOG_VOLTAGE(uhADCxConvertedData[0],
-                            ADC_RESOLUTION_12B);
-
-    ch1_mv = __ADC_CALC_DATA_VOLTAGE((float) int_ref,
-                            (float) uhADCxConvertedData[1]);
-    ch2_mv = __ADC_CALC_DATA_VOLTAGE((float) int_ref,
-                            (float) uhADCxConvertedData[2]);
-    ch3_mv = __ADC_CALC_DATA_VOLTAGE((float) int_ref,
-                            (float) uhADCxConvertedData[3]);
-
-    /*## Generate voltage strings ############################################*/
-//    gcvt(ch1_mv, 5, ch1_str);
-//    gcvt(ch2_mv, 5, ch2_str);
-//    gcvt(ch3_mv, 5, ch3_str);
-
-    /*## Delay ###############################################################*/
-    osDelay(ADC_DELAY);
-  }
-  /* USER CODE END readADC */
-}
 
 /* USER CODE BEGIN Header_controlPumps */
 /**
@@ -979,7 +866,7 @@ void readADC(void *argument)
 void controlPumps(void *argument)
 {
   /* USER CODE BEGIN controlPumps */
-//  Motor_Shield_Init();
+  Motor_Shield_Init();
   /* Infinite loop */
   for(;;)
   {
