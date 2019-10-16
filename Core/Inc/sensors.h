@@ -27,6 +27,8 @@
 /*-----------------------------------------------------------------------------
  *  Function prototypes
  *-----------------------------------------------------------------------------*/
+void sensors_Init(void);
+
 float getpH(void);
 float getEC(void);
 float getTemperature(void);
@@ -34,8 +36,9 @@ float getTemperature(void);
 /*-----------------------------------------------------------------------------
  *  Private defines
  *-----------------------------------------------------------------------------*/
-#define SENSORS_FLAG_TEMPERATURE_READY  ((uint32_t) 0x001)
-#define SENSORS_FLAG_PH_READY           ((uint32_t) 0x010)
-#define SENSORS_FLAG_EC_READY           ((uint32_t) 0x100)
+#define SENSORS_FLAG_TEMPERATURE_READY  ((uint32_t) 0x0001)
+#define SENSORS_FLAG_PH_READY           ((uint32_t) 0x0010)
+#define SENSORS_FLAG_EC_READY           ((uint32_t) 0x0100)
+#define SENSORS_FLAG_ADC_READY		((uint32_t) 0x1000)
 
 #endif /* __SENSORS_H_ */

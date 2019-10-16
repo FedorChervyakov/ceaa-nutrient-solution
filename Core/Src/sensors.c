@@ -80,7 +80,6 @@ static volatile float temperature;
 /*-----------------------------------------------------------------------------
  *  Private function prototypes
  *-----------------------------------------------------------------------------*/
-void sensors_Init(void);
 void calcT(void *argument);
 void calcPH(void *argument);
 void calcEC(void *argument);
@@ -94,6 +93,9 @@ void readADC(void *argument);
  */
 void sensors_Init(void)
 {
+
+  /* definition and creation of sensors' eventFlags */
+  sens_evt_id = osEventFlagsNew(NULL);
 
   /* definition and creation of readADCTask */
   const osThreadAttr_t readADCTask_attributes = {
@@ -150,7 +152,10 @@ void calcT(void *argument)
 {
     for (;;)
     {
-    
+        osEventFlagsWait(sens_evt_id, SENSORS_FLAG_ADC_READY, osFlagsWaitAll, osWaitForever);
+        temperature = 0.01 * ch1_mv;
+        HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
+	osEventFlagsSet(sens_evt_id, SENSORS_FLAG_TEMPERATURE_READY);
     }   
 }
 
@@ -164,7 +169,12 @@ void calcPH(void *argument)
 {
     for (;;)
     {
-    
+        osEventFlagsWait(sens_evt_id, SENSORS_FLAG_ADC_READY | SENSORS_FLAG_TEMPERATURE_READY, 
+			 osFlagsWaitAll, osWaitForever);
+        pH = ch2_mv;
+        HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
+
+	osEventFlagsSet(sens_evt_id, SENSORS_FLAG_PH_READY);
     }   
 }
 
@@ -178,7 +188,12 @@ void calcEC(void *argument)
 {
     for (;;)
     {
+        osEventFlagsWait(sens_evt_id, SENSORS_FLAG_ADC_READY | SENSORS_FLAG_TEMPERATURE_READY, 
+			 osFlagsWaitAll, osWaitForever);
     
+        EC = ch3_mv;
+        HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
+	osEventFlagsSet(sens_evt_id, SENSORS_FLAG_EC_READY);
     }   
 }
 
@@ -196,6 +211,8 @@ void readADC(void *argument)
   for(;;)
   {
     HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
     /*## Start ADC conversions ###############################################*/
     /* Clear ADC conversion flag */
     osThreadFlagsClear(ADC_COMPLETE_FLAG);
@@ -281,7 +298,6 @@ float getTemperature ( void )
   */
 void HAL_ADC_ConvCpltCallback ( ADC_HandleTypeDef *hadc)
 {
-    HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
     /* Set event flag to indicate ADC completion */
     osThreadFlagsSet(readADCTaskHandle, ADC_COMPLETE_FLAG);
 }		/* -----  end of function HAL_ADC_ConvCpltCallback  ----- */

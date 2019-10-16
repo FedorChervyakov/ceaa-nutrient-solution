@@ -866,7 +866,7 @@ void StartDefaultTask(void *argument)
 void controlPumps(void *argument)
 {
   /* USER CODE BEGIN controlPumps */
-  Motor_Shield_Init();
+  //Motor_Shield_Init();
   /* Infinite loop */
   for(;;)
   {
