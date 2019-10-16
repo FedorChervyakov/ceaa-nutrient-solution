@@ -397,7 +397,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.Timing = 0x00707BBA;
+  hi2c1.Init.Timing = 0x00707CBB;
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
@@ -417,7 +417,7 @@ static void MX_I2C1_Init(void)
   }
   /** Configure Digital filter 
   */
-  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 1) != HAL_OK)
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
   {
     Error_Handler();
   }
@@ -700,7 +700,7 @@ static void Motor_Shield_Init (void)
     pca9685 = pca9685_init_struct(MS_I2C_ADDRESS,
                                   (pca9685_i2c_com_fptr_t) i2c_write,
                                   (pca9685_i2c_com_fptr_t) i2c_read,
-                                  delay_ms, 1500);
+                                  delay_ms, 1400);
     MS.pca9685 = &pca9685;
     MS.driver1_mode = TB6612_2DC_MODE;
     MS.driver2_mode = TB6612_2DC_MODE;
@@ -759,6 +759,7 @@ int8_t i2c_read(uint8_t dev_id, uint8_t reg_addr, uint8_t *reg_data, uint16_t le
             Error_Handler();
             rslt = -1;
         }
+//        do {} while (HAL_I2C_GetState(&hi2c1) != HAL_I2C_STATE_READY);
         
         osEventFlagsWait(evt_id, MAIN_FLAG_I2C_RX_CPLT, osFlagsWaitAll, osWaitForever);
 //        do {} while (HAL_I2C_GetState(&hi2c1) != HAL_I2C_STATE_READY);
@@ -814,7 +815,7 @@ int8_t i2c_write(uint8_t dev_id, uint8_t reg_addr, uint8_t *reg_data, uint16_t l
   * @param  hi2c: I2C handle.
   * @retval None
   */
-void HAL_I2C_TxCpltCallback(I2C_HandleTypeDef *hi2c)
+void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
     osEventFlagsSet(evt_id, MAIN_FLAG_I2C_TX_CPLT);
 }
@@ -824,7 +825,7 @@ void HAL_I2C_TxCpltCallback(I2C_HandleTypeDef *hi2c)
   * @param  hi2c: I2C handle.
   * @retval None
   */
-void HAL_I2C_RxCpltCallback(I2C_HandleTypeDef *hi2c)
+void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
     osEventFlagsSet(evt_id, MAIN_FLAG_I2C_RX_CPLT);
 }
@@ -859,7 +860,6 @@ void StartDefaultTask(void *argument)
   }
   /* USER CODE END 5 */ 
 }
-
 
 /* USER CODE BEGIN Header_controlPumps */
 /**
