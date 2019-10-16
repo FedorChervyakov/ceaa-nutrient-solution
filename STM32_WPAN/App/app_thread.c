@@ -608,7 +608,7 @@ static otError APP_THREAD_ph_RespSend(otCoapHeader  * pRequestHeader,
 {
     otError error = OT_ERROR_NONE;
     float ph = 0;
-    char * str_ptr = NULL;
+    char  str_ptr[10];
     do
     {
         otCoapHeaderInit(&OT_Header, OT_COAP_TYPE_ACKNOWLEDGMENT, OT_COAP_CODE_CONTENT);
@@ -695,7 +695,7 @@ static otError APP_THREAD_ec_RespSend(otCoapHeader  * pRequestHeader,
 {
     otError error = OT_ERROR_NONE;
     float ec = 0;
-    char * str_ptr = NULL;
+    char  str_ptr[10];
     do
     {
         otCoapHeaderInit(&OT_Header, OT_COAP_TYPE_ACKNOWLEDGMENT, OT_COAP_CODE_CONTENT);
@@ -782,7 +782,7 @@ static otError APP_THREAD_temp_RespSend(otCoapHeader  * pRequestHeader,
 {
     otError error = OT_ERROR_NONE;
     float temp = 0;
-    char * str_ptr = NULL;
+    char str_ptr[10];
     do
     {
         otCoapHeaderInit(&OT_Header, OT_COAP_TYPE_ACKNOWLEDGMENT, OT_COAP_CODE_CONTENT);

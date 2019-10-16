@@ -104,7 +104,7 @@ void sensors_Init(void)
     .stack_size = sizeof(readADCTaskBuffer),
     .cb_mem = &readADCTaskControlBlock,
     .cb_size = sizeof(readADCTaskControlBlock),
-    .priority = (osPriority_t) osPriorityNormal,
+    .priority = (osPriority_t) osPriorityAboveNormal,
   };
 
   readADCTaskHandle = osThreadNew(readADC, NULL, &readADCTask_attributes);
@@ -153,9 +153,8 @@ void calcT(void *argument)
     for (;;)
     {
         osEventFlagsWait(sens_evt_id, SENSORS_FLAG_ADC_READY, osFlagsWaitAll, osWaitForever);
-        temperature = 0.01 * ch1_mv;
-        HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
-	osEventFlagsSet(sens_evt_id, SENSORS_FLAG_TEMPERATURE_READY);
+        temperature = 0.1 * ch1_mv;
+	    osEventFlagsSet(sens_evt_id, SENSORS_FLAG_TEMPERATURE_READY);
     }   
 }
 
@@ -169,12 +168,10 @@ void calcPH(void *argument)
 {
     for (;;)
     {
-        osEventFlagsWait(sens_evt_id, SENSORS_FLAG_ADC_READY | SENSORS_FLAG_TEMPERATURE_READY, 
+        osEventFlagsWait(sens_evt_id, SENSORS_FLAG_TEMPERATURE_READY, 
 			 osFlagsWaitAll, osWaitForever);
         pH = ch2_mv;
-        HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
-
-	osEventFlagsSet(sens_evt_id, SENSORS_FLAG_PH_READY);
+	    osEventFlagsSet(sens_evt_id, SENSORS_FLAG_PH_READY);
     }   
 }
 
@@ -188,12 +185,11 @@ void calcEC(void *argument)
 {
     for (;;)
     {
-        osEventFlagsWait(sens_evt_id, SENSORS_FLAG_ADC_READY | SENSORS_FLAG_TEMPERATURE_READY, 
+        osEventFlagsWait(sens_evt_id, SENSORS_FLAG_TEMPERATURE_READY, 
 			 osFlagsWaitAll, osWaitForever);
     
         EC = ch3_mv;
-        HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
-	osEventFlagsSet(sens_evt_id, SENSORS_FLAG_EC_READY);
+	    osEventFlagsSet(sens_evt_id, SENSORS_FLAG_EC_READY);
     }   
 }
 
@@ -210,12 +206,12 @@ void readADC(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
     /*## Start ADC conversions ###############################################*/
     /* Clear ADC conversion flag */
     osThreadFlagsClear(ADC_COMPLETE_FLAG);
+
+//    osEventFlagsClear(sens_evt_id, SENSORS_FLAG_ADC_READY | SENSORS_FLAG_PH_READY
+//                      | SENSORS_FLAG_TEMPERATURE_READY | SENSORS_FLAG_EC_READY);
 
     /* Start ADC conversion with DMA */
     if ( HAL_ADC_Start_DMA(&hadc1, (uint32_t *) uhADCxConvertedData, ADC_BUFFERSIZE) != HAL_OK)
@@ -250,6 +246,9 @@ void readADC(void *argument)
 //    gcvt(ch1_mv, 5, ch1_str);
 //    gcvt(ch2_mv, 5, ch2_str);
 //    gcvt(ch3_mv, 5, ch3_str);
+
+    /*## Set ADC ready event flag #############################################*/
+    osEventFlagsSet(sens_evt_id, SENSORS_FLAG_ADC_READY);
 
     /*## Delay ###############################################################*/
     osDelay(ADC_DELAY);
