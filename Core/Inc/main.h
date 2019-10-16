@@ -81,6 +81,8 @@ void Error_Handler(void);
 #define STLINK_TX_Pin GPIO_PIN_7
 #define STLINK_TX_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
+#define MAIN_FLAG_I2C_TX_CPLT   ((uint32_t) 0x01)
+#define MAIN_FLAG_I2C_RX_CPLT   ((uint32_t) 0x10)
 /* USER CODE END Private defines */
 #ifdef __cplusplus
 }

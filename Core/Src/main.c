@@ -39,7 +39,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define MS_I2C_ADDRESS ((uint8_t) 0xC0)
+#define MS_I2C_ADDRESS ((uint16_t) 0xC0)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -64,6 +64,9 @@ osThreadId_t ctrlPumpsTaskHandle;
 uint32_t ctrlPumpsTaskBuffer[ 128 ];
 osStaticThreadDef_t ctrlPumpsTaskControlBlock;
 /* USER CODE BEGIN PV */
+osMutexId_t hi2c1_mx;
+osEventFlagsId_t evt_id;
+
 static MotorShield_dev MS;
 static pca9685_dev pca9685;
 static volatile uint8_t rxI2C_buffer[64];
@@ -93,6 +96,9 @@ static void Motor_Shield_Init(void);
 void delay_ms(uint16_t period);
 int8_t i2c_read(uint8_t dev_id, uint8_t reg_addr, uint8_t *reg_data, uint16_t len);
 int8_t i2c_write(uint8_t dev_id, uint8_t reg_addr, uint8_t *reg_data, uint16_t len);
+
+void HAL_I2C_TxCpltCallback(I2C_HandleTypeDef *hi2c);
+void HAL_I2C_RxCpltCallback(I2C_HandleTypeDef *hi2c);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -143,7 +149,16 @@ int main(void)
   osKernelInitialize();
 
   /* USER CODE BEGIN RTOS_MUTEX */
-  /* add mutexes, ... */
+  const osMutexAttr_t hi2c1_mx_attr = {
+    "I2C1_Mutex",
+    osMutexRobust,
+    NULL,
+    0U
+  };
+  hi2c1_mx = osMutexNew(&hi2c1_mx_attr);
+
+  /* Not a mutex, but eventflags */
+  evt_id = osEventFlagsNew(NULL);
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -682,18 +697,18 @@ static void Init_Exti( void )
  */
 static void Motor_Shield_Init (void)
 {
-        pca9685 = pca9685_init_struct(MS_I2C_ADDRESS,
-                                      (pca9685_i2c_com_fptr_t) i2c_write,
-                                      (pca9685_i2c_com_fptr_t) i2c_read,
-                                      delay_ms, 1500);
-        MS.pca9685 = &pca9685;
-        MS.driver1_mode = TB6612_2DC_MODE;
-        MS.driver2_mode = TB6612_2DC_MODE;
+    pca9685 = pca9685_init_struct(MS_I2C_ADDRESS,
+                                  (pca9685_i2c_com_fptr_t) i2c_write,
+                                  (pca9685_i2c_com_fptr_t) i2c_read,
+                                  delay_ms, 1500);
+    MS.pca9685 = &pca9685;
+    MS.driver1_mode = TB6612_2DC_MODE;
+    MS.driver2_mode = TB6612_2DC_MODE;
 
-        if (MS_Init(&MS) != 0) 
-        {
-            Error_Handler();
-        }
+    if (MS_Init(&MS) != 0) 
+    {
+        Error_Handler();
+    }
 }		/* -----  end of function Motor_Shield_Init  ----- */
 
 
@@ -704,18 +719,18 @@ static void Motor_Shield_Init (void)
 /* 
  * ===  FUNCTION  ======================================================================
  *         Name:  delay_ms
- *  Description:  Example of delay function
+ *  Description:  
  * =====================================================================================
  */
 void delay_ms(uint16_t period)
 {
-    HAL_Delay(period);
+    osDelay(period);
 }
 
 /* 
  * ===  FUNCTION  ======================================================================
  *         Name:  i2c_read
- *  Description:  Example of i2c read function
+ *  Description:  
  * =====================================================================================
  */
 int8_t i2c_read(uint8_t dev_id, uint8_t reg_addr, uint8_t *reg_data, uint16_t len)
@@ -723,37 +738,32 @@ int8_t i2c_read(uint8_t dev_id, uint8_t reg_addr, uint8_t *reg_data, uint16_t le
     int8_t rslt = 0;                    /* Return 0 for Success, non-zero for failure */
 
     uint16_t dev_addr = (uint16_t) dev_id;
-    /*
-     * The parameter dev_id can be used as a variable to store the I2C address of the device
-     */
-
-    do 
+   
+    osMutexAcquire(hi2c1_mx, osWaitForever);
+    osEventFlagsClear(evt_id, MAIN_FLAG_I2C_TX_CPLT | MAIN_FLAG_I2C_RX_CPLT);
+    
+    if (HAL_I2C_Master_Transmit_DMA(&hi2c1, dev_addr, (uint8_t *) &reg_addr, len) != HAL_OK) 
     {
-        if (HAL_I2C_Master_Transmit_DMA(&hi2c1, dev_addr, (uint8_t *) &reg_addr, len) != HAL_OK) 
+        Error_Handler();
+        rslt = -1;
+    }
+
+    osEventFlagsWait(evt_id, MAIN_FLAG_I2C_TX_CPLT, osFlagsWaitAll, osWaitForever);
+//    do {} while (HAL_I2C_GetState(&hi2c1) != HAL_I2C_STATE_READY);
+
+    if (len > 0) 
+    {
+        if(HAL_I2C_Master_Receive_DMA(&hi2c1, dev_addr, reg_data, len) != HAL_OK)
         {
+            /* Error_Handler() function is called when error occurs. */
             Error_Handler();
             rslt = -1;
         }
-
-        do {} while (HAL_I2C_GetState(&hi2c1) != HAL_I2C_STATE_READY);
-
-        if (HAL_I2C_GetError(&hi2c1) != HAL_I2C_ERROR_NONE) { HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET); }
-
-        if (len > 0) 
-        {
-            if(HAL_I2C_Master_Receive_IT(&hi2c1, dev_addr, reg_data, len) != HAL_OK)
-            {
-                /* Error_Handler() function is called when error occurs. */
-                Error_Handler();
-                rslt = -1;
-            }
-
-            do {} while (HAL_I2C_GetState(&hi2c1) != HAL_I2C_STATE_READY);
-
-            if (HAL_I2C_GetError(&hi2c1) != HAL_I2C_ERROR_NONE) { HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET); }
-        }
+        
+        osEventFlagsWait(evt_id, MAIN_FLAG_I2C_RX_CPLT, osFlagsWaitAll, osWaitForever);
+//        do {} while (HAL_I2C_GetState(&hi2c1) != HAL_I2C_STATE_READY);
     }
-    while (HAL_I2C_GetError(&hi2c1) == HAL_I2C_ERROR_AF);
+    osMutexRelease(hi2c1_mx);
 
     return rslt;
 }
@@ -761,10 +771,11 @@ int8_t i2c_read(uint8_t dev_id, uint8_t reg_addr, uint8_t *reg_data, uint16_t le
 /* 
  * ===  FUNCTION  ======================================================================
  *         Name:  i2c_write
- *  Description:  Example of i2c write function
+ *  Description:  
  * =====================================================================================
  */
 int8_t i2c_write(uint8_t dev_id, uint8_t reg_addr, uint8_t *reg_data, uint16_t len)
+
 {
     int8_t rslt = 0;                            /* Return 0 for Success, non-zero for failure */
     int16_t dev_addr = (uint16_t) dev_id;       /* I2C address */
@@ -777,23 +788,19 @@ int8_t i2c_write(uint8_t dev_id, uint8_t reg_addr, uint8_t *reg_data, uint16_t l
         i++;
     } while (i<len);
 
-    /* I2C transmit */
-    do
-    {
-        if (HAL_I2C_Master_Transmit_IT(&hi2c1, dev_addr, (uint8_t *) txI2C_buffer, len+1) != HAL_OK)    /* Send command */
-        {
-            Error_Handler();
-            rslt = -1;
-        }
-        
-        do {} while (HAL_I2C_GetState(&hi2c1) != HAL_I2C_STATE_READY);
+    osMutexAcquire(hi2c1_mx, osWaitForever);
+    osEventFlagsClear(evt_id, MAIN_FLAG_I2C_TX_CPLT);
 
-        if (HAL_I2C_GetError(&hi2c1) != HAL_I2C_ERROR_NONE) 
-        {
-            HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET); 
-        }
+    /* I2C transmit */
+    if (HAL_I2C_Master_Transmit_DMA(&hi2c1, dev_addr, (uint8_t *) txI2C_buffer, len+1) != HAL_OK)    /* Send command */
+    {
+        Error_Handler();
+        rslt = -1;
     }
-    while (HAL_I2C_GetError(&hi2c1) == HAL_I2C_ERROR_AF);
+    
+    osEventFlagsWait(evt_id, MAIN_FLAG_I2C_TX_CPLT, osFlagsWaitAll, osWaitForever);
+//    do {} while (HAL_I2C_GetState(&hi2c1) != HAL_I2C_STATE_READY);
+    osMutexRelease(hi2c1_mx);
 
     return rslt;
 }
@@ -809,8 +816,7 @@ int8_t i2c_write(uint8_t dev_id, uint8_t reg_addr, uint8_t *reg_data, uint16_t l
   */
 void HAL_I2C_TxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
-    /* Toggle Pin 3 to indicate I2C tx completion */ 
-    HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+    osEventFlagsSet(evt_id, MAIN_FLAG_I2C_TX_CPLT);
 }
 
 /**
@@ -820,8 +826,7 @@ void HAL_I2C_TxCpltCallback(I2C_HandleTypeDef *hi2c)
   */
 void HAL_I2C_RxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
-    /* Toggle Pin 2 to indicate I2C rx completion */
-    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+    osEventFlagsSet(evt_id, MAIN_FLAG_I2C_RX_CPLT);
 }
 
 
@@ -866,11 +871,15 @@ void StartDefaultTask(void *argument)
 void controlPumps(void *argument)
 {
   /* USER CODE BEGIN controlPumps */
-  //Motor_Shield_Init();
+  Motor_Shield_Init();
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+    MS_DC_drive(&MS, MS_DC_MOTOR_2, MS_CW, 1024); 
+    osDelay(500);
+    MS_DC_drive(&MS, MS_DC_MOTOR_2, MS_SHORT_BRAKE, 1024); 
+
+    osDelay(5000);
   }
   /* USER CODE END controlPumps */
 }
