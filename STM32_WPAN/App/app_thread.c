@@ -52,6 +52,9 @@
 #define C_SIZE_CMD_STRING       256U
 #define C_PANID                 0x1812U
 #define C_CHANNEL_NB            14U
+#define C_PASSWORD              "PASWD"
+#define JOIN_BUTTON_DELAY       ((uint16_t) 3000) /* Hold button for to join net */
+#define JOIN_BUTTON_UPDATE      ((uint16_t) 50)   /* Read button state every     */
 
 /* FreeRtos stacks attributes */
 const osThreadAttr_t ThreadMsgM0ToM4Process_attr = {
@@ -72,9 +75,29 @@ const osThreadAttr_t ThreadCliProcess_attr = {
      .stack_mem = CFG_THREAD_CLI_PROCESS_STACK_MEM,
      .priority = CFG_THREAD_CLI_PROCESS_PRIORITY,
      .stack_size = CFG_THREAD_CLI_PROCESS_STACk_SIZE
- };
+};
 
 /* USER CODE BEGIN PD */
+const osThreadAttr_t JoinerProcess_attr = {
+     .name = CFG_JOINER_PROCESS_NAME,
+     .attr_bits = CFG_JOINER_PROCESS_ATTR_BITS,
+     .cb_mem = CFG_JOINER_PROCESS_CB_MEM,
+     .cb_size = CFG_JOINER_PROCESS_CB_SIZE,
+     .stack_mem = CFG_JOINER_PROCESS_STACK_MEM,
+     .priority = CFG_JOINER_PROCESS_PRIORITY,
+     .stack_size = CFG_JOINER_PROCESS_STACk_SIZE
+};
+
+const osThreadAttr_t UIProcess_attr = {
+     .name = CFG_UI_PROCESS_NAME,
+     .attr_bits = CFG_UI_PROCESS_ATTR_BITS,
+     .cb_mem = CFG_UI_PROCESS_CB_MEM,
+     .cb_size = CFG_UI_PROCESS_CB_SIZE,
+     .stack_mem = CFG_UI_PROCESS_STACK_MEM,
+     .priority = CFG_UI_PROCESS_PRIORITY,
+     .stack_size = CFG_UI_PROCESS_STACk_SIZE
+};
+
 #define C_RESOURCE_PH           "ph"
 #define C_RESOURCE_EC           "ec"
 #define C_RESOURCE_TEMP         "temp"
@@ -113,6 +136,10 @@ static void APP_THREAD_FreeRTOSProcessMsgM0ToM4Task(void *argument);
 static void APP_THREAD_FreeRTOSSendCLIToM0Task(void *argument);
 
 /* USER CODE BEGIN PFP */
+static void APP_THREAD_JoinerProcess(void *argument);
+static void UIProcess(void *argument);
+
+static void APP_THREAD_JoinerHandler(otError OtError, void *pContext);
 
 static void APP_THREAD_ph_ReqHandler(otCoapHeader   * pHeader,
                             otMessage               * pMessage,
@@ -173,6 +200,9 @@ static osThreadId_t OsTaskMsgM0ToM4Id;      /* Task managing the M0 to M4 messag
 static osThreadId_t OsTaskCliId;            /* Task used to manage CLI comamnd             */
 
 /* USER CODE BEGIN PV */
+static osThreadId_t JoinerTaskId;           /* Task used manage joining a Thread network   */
+static osThreadId_t UITaskId;               /* Task managing buttons and leds */
+
 static otCoapResource OT_Resource_ph = {C_RESOURCE_PH,
                             APP_THREAD_DummyReqHandler,
                             (void*) APP_THREAD_ph_ReqHandler,
@@ -235,7 +265,8 @@ void APP_THREAD_Init( void )
   OsTaskMsgM0ToM4Id = osThreadNew(APP_THREAD_FreeRTOSProcessMsgM0ToM4Task, NULL,&ThreadMsgM0ToM4Process_attr);
 
   /* USER CODE BEGIN APP_THREAD_INIT_FREERTOS */
-
+  JoinerTaskId = osThreadNew(APP_THREAD_JoinerProcess, NULL, &JoinerProcess_attr);
+  UITaskId = osThreadNew(UIProcess, NULL, &UIProcess_attr);
   /* USER CODE END APP_THREAD_INIT_FREERTOS */
 
   /* Configure the Thread device at start */
@@ -332,11 +363,11 @@ void APP_THREAD_Error(uint32_t ErrId, uint32_t ErrCode)
 static void APP_THREAD_DeviceConfig(void)
 {
   otError error;
-  error = otInstanceErasePersistentInfo(NULL);
-  if (error != OT_ERROR_NONE)
-  {
-    APP_THREAD_Error(ERR_THREAD_ERASE_PERSISTENT_INFO,error);
-  }
+//  error = otInstanceErasePersistentInfo(NULL);
+//  if (error != OT_ERROR_NONE)
+//  {
+//    APP_THREAD_Error(ERR_THREAD_ERASE_PERSISTENT_INFO,error);
+//  }
   otInstanceFinalize(NULL);
   otInstanceInitSingle();
   error = otSetStateChangedCallback(NULL, APP_THREAD_StateNotif, NULL);
@@ -558,10 +589,109 @@ static void APP_THREAD_FreeRTOSSendCLIToM0Task(void *argument)
 }
 
 /* USER CODE BEGIN FREERTOS_WRAPPER_FUNCTIONS */
+static void APP_THREAD_JoinerProcess(void *argument)
+{
+  UNUSED(argument);
+  otError error;
+  for(;;)
+  {
+      osThreadFlagsClear(1);
 
+      osThreadFlagsWait(1, osFlagsWaitAll, osWaitForever);
+
+      HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
+
+      error = otInstanceErasePersistentInfo(NULL);
+      if (error != OT_ERROR_NONE)
+      {
+        APP_THREAD_Error(ERR_THREAD_ERASE_PERSISTENT_INFO,error);
+      }
+      otInstanceFinalize(NULL);
+      otInstanceInitSingle();
+      error = otSetStateChangedCallback(NULL, APP_THREAD_StateNotif, NULL);
+      if (error != OT_ERROR_NONE)
+      {
+        APP_THREAD_Error(ERR_THREAD_SET_STATE_CB,error);
+      }
+//      ToggleBlueLedMode = FAST_TOGGLING;
+      error = otIp6SetEnabled(NULL, true);
+      if (error != OT_ERROR_NONE)
+      {
+        APP_THREAD_Error(ERR_THREAD_IPV6_ENABLE, error);
+      }
+
+      /* Start the commissioner */
+      error = otJoinerStart(NULL,
+          C_PASSWORD,
+          NULL,
+          "OT", /* PACKAGE_NAME */
+          "TestAppli",/* OPENTHREAD_CONFIG_PLATFORM_INFO */
+          "NA", /* PACKAGE_VERSION */
+          NULL, APP_THREAD_JoinerHandler, NULL);
+
+      if (error != OT_ERROR_NONE)
+      {
+        APP_THREAD_Error(ERR_JOINER_START, error);
+      }
+          
+  }
+}
+
+static void UIProcess(void *argument)
+{
+    UNUSED(argument);
+
+    for (;;)
+    {
+        osThreadFlagsClear(1);
+        
+        osThreadFlagsWait(1, osFlagsWaitAll, osWaitForever);
+        
+        uint16_t i = 0;
+        do
+        {
+            i++;
+            osDelay(JOIN_BUTTON_UPDATE);
+        } while (HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == GPIO_PIN_SET);
+
+        if (i > (JOIN_BUTTON_DELAY / JOIN_BUTTON_UPDATE))
+        {
+            osThreadFlagsSet(JoinerTaskId, 1);
+        }
+        
+    }
+
+}
 /* USER CODE END FREERTOS_WRAPPER_FUNCTIONS */
 
 /* USER CODE BEGIN FD_LOCAL_FUNCTIONS */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    if (GPIO_Pin == B1_Pin)
+    {
+        osThreadFlagsSet(UITaskId, 1);
+    }
+}
+
+/**
+ * @brief Dummy request handler
+ * @param
+ * @retval None
+ */
+static void APP_THREAD_JoinerHandler(otError OtError, void *pContext)
+{
+  if (OtError == OT_ERROR_NONE)
+  {
+    OtError = otThreadSetEnabled(NULL, true);
+    if (OtError != OT_ERROR_NONE)
+    {
+      APP_THREAD_Error(ERR_THREAD_START, OtError);
+    }
+  }
+  else
+    APP_THREAD_Error(ERR_THREAD_JOINER_CB, OtError);
+}
+
 /**
  * @brief This function is used to handle the pH requests
  *

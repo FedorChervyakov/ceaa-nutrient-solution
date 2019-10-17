@@ -525,7 +525,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
@@ -558,6 +558,9 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF7_USART1;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
 }
 
 /* USER CODE BEGIN 4 */
@@ -871,13 +874,22 @@ void StartDefaultTask(void *argument)
 void controlPumps(void *argument)
 {
   /* USER CODE BEGIN controlPumps */
+  int8_t ms_status;
   Motor_Shield_Init();
   /* Infinite loop */
   for(;;)
   {
-    MS_DC_drive(&MS, MS_DC_MOTOR_2, MS_CW, 1024); 
+    ms_status = MS_DC_drive(&MS, MS_DC_MOTOR_4, MS_CW, 1024); 
+    if (ms_status != MS_OK) 
+    {
+        HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
+    }
     osDelay(500);
-    MS_DC_drive(&MS, MS_DC_MOTOR_2, MS_SHORT_BRAKE, 1024); 
+    ms_status = MS_DC_drive(&MS, MS_DC_MOTOR_4, MS_SHORT_BRAKE, 1024); 
+    if (ms_status != MS_OK) 
+    {
+        HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
+    }
 
     osDelay(5000);
   }
