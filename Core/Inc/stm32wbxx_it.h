@@ -55,6 +55,7 @@ void UsageFault_Handler(void);
 void DebugMon_Handler(void);
 void PVD_PVM_IRQHandler(void);
 void FLASH_IRQHandler(void);
+void EXTI4_IRQHandler(void);
 void DMA1_Channel1_IRQHandler(void);
 void DMA1_Channel2_IRQHandler(void);
 void DMA1_Channel3_IRQHandler(void);
@@ -64,7 +65,6 @@ void I2C1_EV_IRQHandler(void);
 void PWR_SOTF_BLEACT_802ACT_RFPHASE_IRQHandler(void);
 void HSEM_IRQHandler(void);
 /* USER CODE BEGIN EFP */
-void EXTI4_IRQHandler(void);
 void RTC_WKUP_IRQHandler(void);
 void IPCC_C1_TX_IRQHandler(void);
 void IPCC_C1_RX_IRQHandler(void);

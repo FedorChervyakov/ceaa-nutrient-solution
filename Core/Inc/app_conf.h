@@ -292,7 +292,7 @@ typedef enum
 #define CFG_JOINER_PROCESS_CB_SIZE        (0)
 #define CFG_JOINER_PROCESS_STACK_MEM      (0)
 #define CFG_JOINER_PROCESS_PRIORITY       osPriorityNormal
-#define CFG_JOINER_PROCESS_STACk_SIZE     (128 * 6)
+#define CFG_JOINER_PROCESS_STACk_SIZE     (128 * 8)
 
 #define CFG_UI_PROCESS_NAME                  "UI_PROCESS"
 #define CFG_UI_PROCESS_ATTR_BITS             (0)
@@ -300,7 +300,7 @@ typedef enum
 #define CFG_UI_PROCESS_CB_SIZE               (0)
 #define CFG_UI_PROCESS_STACK_MEM             (0)
 #define CFG_UI_PROCESS_PRIORITY              osPriorityNormal
-#define CFG_UI_PROCESS_STACk_SIZE            (128 * 5)
+#define CFG_UI_PROCESS_STACk_SIZE            (128)
 /* USER CODE END FreeRTOS_Defines */
 /******************************************************************************
  * LOW POWER
