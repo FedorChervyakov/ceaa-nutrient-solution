@@ -23,6 +23,7 @@
 
 #include "hw.h"
 #include "hw_conf.h"
+#include "hw_if.h"
 
 /******************************************************************************
  * Application Config
@@ -219,8 +220,8 @@ typedef enum
  * When both are set to 0, no trace are output
  * When both are set to 1,  CFG_DEBUG_TRACE_FULL is selected
  */
-#define CFG_DEBUG_TRACE_LIGHT    0
-#define CFG_DEBUG_TRACE_FULL    0
+#define CFG_DEBUG_TRACE_LIGHT     0
+#define CFG_DEBUG_TRACE_FULL      0
 
 #if (( CFG_DEBUG_TRACE != 0 ) && ( CFG_DEBUG_TRACE_LIGHT == 0 ) && (CFG_DEBUG_TRACE_FULL == 0))
 #undef CFG_DEBUG_TRACE_FULL
@@ -291,8 +292,8 @@ typedef enum
 #define CFG_JOINER_PROCESS_CB_MEM         (0)
 #define CFG_JOINER_PROCESS_CB_SIZE        (0)
 #define CFG_JOINER_PROCESS_STACK_MEM      (0)
-#define CFG_JOINER_PROCESS_PRIORITY       osPriorityNormal
-#define CFG_JOINER_PROCESS_STACk_SIZE     (128 * 8)
+#define CFG_JOINER_PROCESS_PRIORITY       osPriorityAboveNormal
+#define CFG_JOINER_PROCESS_STACk_SIZE     (128 * 9)
 
 #define CFG_UI_PROCESS_NAME                  "UI_PROCESS"
 #define CFG_UI_PROCESS_ATTR_BITS             (0)

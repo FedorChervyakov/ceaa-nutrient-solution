@@ -77,10 +77,6 @@ const osThreadAttr_t ThreadCliProcess_attr = {
 /* USER CODE BEGIN PD */
 const osThreadAttr_t JoinerProcess_attr = {
      .name = CFG_JOINER_PROCESS_NAME,
-     .attr_bits = CFG_JOINER_PROCESS_ATTR_BITS,
-     .cb_mem = CFG_JOINER_PROCESS_CB_MEM,
-     .cb_size = CFG_JOINER_PROCESS_CB_SIZE,
-     .stack_mem = CFG_JOINER_PROCESS_STACK_MEM,
      .priority = CFG_JOINER_PROCESS_PRIORITY,
      .stack_size = CFG_JOINER_PROCESS_STACk_SIZE
 };
@@ -118,7 +114,9 @@ static void APP_THREAD_CheckWirelessFirmwareInfo(void);
 static void APP_THREAD_DeviceConfig(void);
 static void APP_THREAD_StateNotif(uint32_t NotifFlags, void *pContext);
 static void APP_THREAD_TraceError(const char * pMess, uint32_t ErrCode);
+#if (CFG_FULL_LOW_POWER == 0)
 static void Send_CLI_To_M0(void);
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 static void Send_CLI_Ack_For_OT(void);
 static void HostTxCb( void );
 static void Wait_Getting_Ack_From_M0(void);
@@ -133,12 +131,16 @@ extern void MX_USART1_UART_Init(void);
 #if (CFG_USB_INTERFACE_ENABLE != 0)
 static uint32_t ProcessCmdString(uint8_t* buf , uint32_t len);
 #else
+#if (CFG_FULL_LOW_POWER == 0)
 static void RxCpltCallback(void);
-#endif
+#endif /* (CFG_FULL_LOW_POWER == 0) */
+#endif /* (CFG_USB_INTERFACE_ENABLE != 0) */
 
 /* FreeRTos wrapper functions */
 static void APP_THREAD_FreeRTOSProcessMsgM0ToM4Task(void *argument);
+#if (CFG_FULL_LOW_POWER == 0)
 static void APP_THREAD_FreeRTOSSendCLIToM0Task(void *argument);
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 
 /* USER CODE BEGIN PFP */
 static void APP_THREAD_JoinerProcess(void *argument);
@@ -184,10 +186,14 @@ static uint8_t TmpString[C_SIZE_CMD_STRING];
 static uint8_t VcpRxBuffer[sizeof(TL_CmdSerial_t)];        /* Received Data over USB are stored in this buffer */
 static uint8_t VcpTxBuffer[sizeof(TL_EvtPacket_t) + 254U]; /* Transmit buffer over USB */
 #else
+#if (CFG_FULL_LOW_POWER == 0)
 static uint8_t aRxBuffer[C_SIZE_CMD_STRING];
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 #endif /* (CFG_USB_INTERFACE_ENABLE != 0) */
 
+#if (CFG_FULL_LOW_POWER == 0)
 static uint8_t CommandString[C_SIZE_CMD_STRING];
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 static __IO uint16_t indexReceiveChar = 0;
 static __IO uint16_t CptReceiveCmdFromUser = 0;
 
@@ -202,7 +208,9 @@ PLACE_IN_SECTION("MB_MEM2") ALIGN(4) static uint8_t ThreadNotifRspEvtBuffer[size
 PLACE_IN_SECTION("MB_MEM2") ALIGN(4) static TL_CmdPacket_t ThreadCliCmdBuffer;
 
 static osThreadId_t OsTaskMsgM0ToM4Id;      /* Task managing the M0 to M4 messaging        */
+#if (CFG_FULL_LOW_POWER == 0)
 static osThreadId_t OsTaskCliId;            /* Task used to manage CLI comamnd             */
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 
 /* USER CODE BEGIN PV */
 static osThreadId_t JoinerTaskId;           /* Task used manage joining a Thread network   */
@@ -285,9 +293,9 @@ void APP_THREAD_Init( void )
   /* Configure the Thread device at start */
   APP_THREAD_DeviceConfig();
 
- /* USER CODE BEGIN APP_THREAD_INIT_2 */
+  /* USER CODE BEGIN APP_THREAD_INIT_2 */
 
- /* USER CODE END APP_THREAD_INIT_2 */
+  /* USER CODE END APP_THREAD_INIT_2 */
 }
 
 /**
@@ -309,7 +317,7 @@ void APP_THREAD_Error(uint32_t ErrId, uint32_t ErrCode)
   case ERR_THREAD_SET_STATE_CB :
     APP_THREAD_TraceError("ERROR : ERR_THREAD_SET_STATE_CB ",ErrCode);
     break;
-   case ERR_THREAD_SET_CHANNEL :
+  case ERR_THREAD_SET_CHANNEL :
     APP_THREAD_TraceError("ERROR : ERR_THREAD_SET_CHANNEL ",ErrCode);
     break;
   case ERR_THREAD_SET_PANID :
@@ -359,7 +367,7 @@ void APP_THREAD_Error(uint32_t ErrId, uint32_t ErrCode)
   default :
     APP_THREAD_TraceError("ERROR Unknown ", 0);
     break;
-    }
+  }
 }
 
 /*************************************************************
@@ -406,9 +414,7 @@ static void APP_THREAD_DeviceConfig(void)
   error = otThreadSetEnabled(NULL, true);
   if (error != OT_ERROR_NONE)
   {
-//    APP_THREAD_Error(ERR_THREAD_START,error);
-    osThreadFlagsSet(JoinerTaskId, JOIN_TASK_FLAG_BEGIN);
-    return;
+    APP_THREAD_Error(ERR_THREAD_START,error);
   }
 
   /* USER CODE BEGIN DEVICECONFIG */
@@ -587,6 +593,7 @@ static void APP_THREAD_FreeRTOSProcessMsgM0ToM4Task(void *argument)
   }
 }
 
+#if (CFG_FULL_LOW_POWER == 0)
 static void APP_THREAD_FreeRTOSSendCLIToM0Task(void *argument)
 {
   UNUSED(argument);
@@ -602,17 +609,19 @@ static void APP_THREAD_FreeRTOSSendCLIToM0Task(void *argument)
     /* USER END END APP_THREAD_FREERTOS_SEND_CLI_TO_M0_2 */
   }
 }
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 
 /* USER CODE BEGIN FREERTOS_WRAPPER_FUNCTIONS */
 static void APP_THREAD_JoinerProcess(void *argument)
 {
   UNUSED(argument);
   otError error;
-  uint32_t t_flags = 0;
 
+  osThreadFlagsClear( JOIN_TASK_FLAG_BEGIN );
   for(;;)
   {
 
+      uint32_t t_flags = 0;
       osThreadFlagsWait(JOIN_TASK_FLAG_BEGIN, osFlagsWaitAll, osWaitForever);
 
       HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
@@ -622,13 +631,13 @@ static void APP_THREAD_JoinerProcess(void *argument)
         otIp6SetEnabled(NULL, false);
       }
 
-      otInstanceFinalize(NULL);
-
       error = otInstanceErasePersistentInfo(NULL);
       if (error != OT_ERROR_NONE)
       {
         APP_THREAD_Error(ERR_THREAD_ERASE_PERSISTENT_INFO,error);
       }
+
+      otInstanceFinalize(NULL);
 
       otInstanceInitSingle();
       error = otSetStateChangedCallback(NULL, APP_THREAD_StateNotif, NULL);
@@ -643,7 +652,7 @@ static void APP_THREAD_JoinerProcess(void *argument)
         APP_THREAD_Error(ERR_THREAD_IPV6_ENABLE, error);
       }
 
-      /* Start the commissioner */
+      /* Start the joiner */
       error = otJoinerStart(NULL,
           C_PASSWORD,
           NULL,
@@ -658,67 +667,7 @@ static void APP_THREAD_JoinerProcess(void *argument)
       }
           
       HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_RESET);
-
-      t_flags = osThreadFlagsWait( JOIN_TASK_FLAG_JOIN_SUCCESS 
-                                   | JOIN_TASK_FLAG_JOIN_FAIL, 
-                                   osFlagsWaitAny,
-                                   osWaitForever);
-      if (t_flags == JOIN_TASK_FLAG_JOIN_SUCCESS)
-      {
-        error = otThreadSetEnabled(NULL, true);
-        if (error != OT_ERROR_NONE)
-        {
-            APP_THREAD_Error(ERR_THREAD_START,error);
-        }
-        
-        osDelay(5000);
-        
-        error = otThreadSetEnabled(NULL, false);
-        if (error != OT_ERROR_NONE)
-        {
-            APP_THREAD_Error(ERR_THREAD_START,error);
-        }
-
-        if (otIp6IsEnabled(NULL))
-        {
-            otIp6SetEnabled(NULL, false);
-        }
-
-
-        SHCI_C2_FLASH_StoreData(THREAD_IP);
-
-        APP_THREAD_DeviceConfig();
-
-        HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
-        osDelay(250);
-        HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_RESET);
-        osDelay(250);
-        HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
-        osDelay(250);
-        HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_RESET);
-        osDelay(250);
-        HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
-        osDelay(250);
-        HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_RESET);
-      } 
-      else if (t_flags == JOIN_TASK_FLAG_JOIN_FAIL)
-      {
-        HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
-        osDelay(250);
-        HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
-        osDelay(250);
-        HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
-        osDelay(250);
-        HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
-        osDelay(250);
-        HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
-        osDelay(250);
-        HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
-      }
-
-      osThreadFlagsClear( JOIN_TASK_FLAG_BEGIN 
-                        | JOIN_TASK_FLAG_JOIN_SUCCESS
-                        | JOIN_TASK_FLAG_JOIN_FAIL);
+      osThreadFlagsClear( JOIN_TASK_FLAG_BEGIN );
   }
 }
 
@@ -766,13 +715,56 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
  */
 static void APP_THREAD_JoinerHandler(otError OtError, void *pContext)
 {
+  otError error;
+  otJoinerState joiner_state;
+  SHCI_CmdStatus_t shci_status;
+
   if (OtError == OT_ERROR_NONE)
   {
-      osThreadFlagsSet(JoinerTaskId, JOIN_TASK_FLAG_JOIN_SUCCESS);
+    error = otThreadSetEnabled(NULL, true);
+    if (error != OT_ERROR_NONE)
+    {
+        APP_THREAD_Error(ERR_THREAD_START, error);
+    }
+
+    osDelay(20000);
+
+    joiner_state = otJoinerGetState(NULL);
+    if (joiner_state != OT_JOINER_STATE_JOINED)
+    {
+        HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
+    }
+    error = otThreadSetEnabled(NULL, false);
+
+    if (error != OT_ERROR_NONE)
+    {
+        APP_THREAD_Error(ERR_THREAD_DISABLE, error);
+    }
+    
+    if (otIp6IsEnabled(NULL))
+    {
+        error = otIp6SetEnabled(NULL, false);
+        if (error != OT_ERROR_NONE)
+        {
+            APP_THREAD_Error(ERR_THREAD_DISABLE, error);
+        }
+    }
+
+//    otInstanceFinalize(NULL);
+
+    shci_status = SHCI_C2_FLASH_StoreData(THREAD_IP);
+    if (shci_status != SHCI_Success)
+    {
+        APP_THREAD_Error(ERR_THREAD_STORE_DATA, shci_status);
+    }
+
+    osDelay(1000);
+    APP_THREAD_DeviceConfig();
+
   }
   else
   {
-      osThreadFlagsSet(JoinerTaskId, JOIN_TASK_FLAG_JOIN_FAIL);
+      APP_THREAD_Error(ERR_THREAD_JOINER_CB, OtError);
   }
 }
 
@@ -1210,10 +1202,10 @@ void Pre_OtCmdProcessing(void)
   */
 static void Wait_Getting_Ack_From_M0(void)
 {
-    while (FlagReceiveAckFromM0 == 0)
-   {
-   }
-   FlagReceiveAckFromM0 = 0;
+  while (FlagReceiveAckFromM0 == 0)
+  {
+  }
+  FlagReceiveAckFromM0 = 0;
 }
 
 /**
@@ -1225,7 +1217,7 @@ static void Wait_Getting_Ack_From_M0(void)
   */
 static void Receive_Ack_From_M0(void)
 {
-    FlagReceiveAckFromM0 = 1;
+  FlagReceiveAckFromM0 = 1;
 }
 
 /**
@@ -1242,6 +1234,7 @@ static void Receive_Notification_From_M0(void)
 
 #if (CFG_USB_INTERFACE_ENABLE != 0)
 #else
+#if (CFG_FULL_LOW_POWER == 0)
 static void RxCpltCallback(void)
 {
   /* Filling buffer and wait for '\r' char */
@@ -1260,6 +1253,7 @@ static void RxCpltCallback(void)
   /* Once a character has been sent, put back the device in reception mode */
 //  HW_UART_Receive_IT(CFG_CLI_UART, aRxBuffer, 1U, RxCpltCallback);
 }
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 #endif /* (CFG_USB_INTERFACE_ENABLE != 0) */
 
 #if (CFG_USB_INTERFACE_ENABLE != 0)
@@ -1302,6 +1296,7 @@ static uint32_t  ProcessCmdString( uint8_t* buf , uint32_t len )
 }
 #endif/* (CFG_USB_INTERFACE_ENABLE != 0) */
 
+#if (CFG_FULL_LOW_POWER == 0)
 /**
  * @brief Process sends receive CLI command to M0.
  * @param  None
@@ -1321,6 +1316,7 @@ static void Send_CLI_To_M0(void)
 
   TL_CLI_SendCmd();
 }
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 
 /**
  * @brief Send notification for CLI TL Channel.
@@ -1341,11 +1337,15 @@ static void Send_CLI_Ack_For_OT(void)
  */
 void APP_THREAD_Init_UART_CLI(void)
 {
+#if (CFG_FULL_LOW_POWER == 0)
   OsTaskCliId = osThreadNew(APP_THREAD_FreeRTOSSendCLIToM0Task, NULL,&ThreadCliProcess_attr);
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 
-  #if (CFG_USB_INTERFACE_ENABLE != 0)
-  #else
+#if (CFG_USB_INTERFACE_ENABLE != 0)
+#else
+#if (CFG_FULL_LOW_POWER == 0)
 //  HW_UART_Receive_IT(CFG_CLI_UART, aRxBuffer, 1, RxCpltCallback);
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 #endif /* (CFG_USB_INTERFACE_ENABLE != 0) */
 }
 

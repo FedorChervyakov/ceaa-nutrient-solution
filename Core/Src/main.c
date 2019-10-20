@@ -288,6 +288,9 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+  /* USER CODE BEGIN Smps */
+
+  /* USER CODE END Smps */
 }
 
 /**
@@ -468,10 +471,7 @@ static void MX_RTC_Init(void)
   hrtc.Instance = RTC;
   hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
   hrtc.Init.AsynchPrediv = CFG_RTC_ASYNCH_PRESCALER;
-  hrtc.Init.SynchPrediv = CFG_RTC_SYNCH_PRESCALER ;
-  hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
-  hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
-  hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
+  hrtc.Init.SynchPrediv = CFG_RTC_SYNCH_PRESCALER;
   if (HAL_RTC_Init(&hrtc) != HAL_OK)
   {
     Error_Handler();
@@ -856,13 +856,6 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *I2cHandle)
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void *argument)
 {
-    
-    
-                           
-          
-    
-    
-
   /* USER CODE BEGIN 5 */
   /* Infinite loop */
   for(;;)
