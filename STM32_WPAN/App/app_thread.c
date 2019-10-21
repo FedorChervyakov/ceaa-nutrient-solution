@@ -41,6 +41,8 @@
 #include "stm32wbxx_hal.h"
 #include "main.h"
 #include "sensors.h"
+//#include "24xx256.h"
+#include "sw_led.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -81,27 +83,11 @@ const osThreadAttr_t JoinerProcess_attr = {
      .stack_size = CFG_JOINER_PROCESS_STACk_SIZE
 };
 
-const osThreadAttr_t UIProcess_attr = {
-     .name = CFG_UI_PROCESS_NAME,
-     .attr_bits = CFG_UI_PROCESS_ATTR_BITS,
-     .cb_mem = CFG_UI_PROCESS_CB_MEM,
-     .cb_size = CFG_UI_PROCESS_CB_SIZE,
-     .stack_mem = CFG_UI_PROCESS_STACK_MEM,
-     .priority = CFG_UI_PROCESS_PRIORITY,
-     .stack_size = CFG_UI_PROCESS_STACk_SIZE
-};
 
 #define C_RESOURCE_PH               "ph"
 #define C_RESOURCE_EC               "ec"
 #define C_RESOURCE_TEMP             "temp"
 #define C_PASSWORD                  "AllBytesWrong"
-#define JOIN_BUTTON_DELAY           ((uint16_t) 3000) /* Hold button for to join net */
-#define JOIN_BUTTON_UPDATE          ((uint16_t) 30)   /* Read button state every     */
-#define JOIN_TASK_FLAG_BEGIN        ((uint32_t) 0x1U)
-#define JOIN_TASK_FLAG_JOIN_SUCCESS ((uint32_t) 0x2U)
-#define JOIN_TASK_FLAG_JOIN_FAIL    ((uint32_t) 0x3U)
-#define UI_TASK_FLAG_BEGIN          ((uint32_t) 0x1U)
-
 /* USER CODE END PD */
 
 /* Private macros ------------------------------------------------------------*/
@@ -144,7 +130,6 @@ static void APP_THREAD_FreeRTOSSendCLIToM0Task(void *argument);
 
 /* USER CODE BEGIN PFP */
 static void APP_THREAD_JoinerProcess(void *argument);
-static void UIProcess(void *argument);
 
 static void APP_THREAD_JoinerHandler(otError OtError, void *pContext);
 
@@ -213,8 +198,7 @@ static osThreadId_t OsTaskCliId;            /* Task used to manage CLI comamnd  
 #endif /* (CFG_FULL_LOW_POWER == 0) */
 
 /* USER CODE BEGIN PV */
-static osThreadId_t JoinerTaskId;           /* Task used manage joining a Thread network   */
-static osThreadId_t UITaskId;               /* Task managing buttons and leds */
+osThreadId_t JoinerTaskId;           /* Task used manage joining a Thread network   */
 
 static otCoapResource OT_Resource_ph = {C_RESOURCE_PH,
                             APP_THREAD_DummyReqHandler,
@@ -280,11 +264,6 @@ void APP_THREAD_Init( void )
   /* USER CODE BEGIN APP_THREAD_INIT_FREERTOS */
   JoinerTaskId = osThreadNew(APP_THREAD_JoinerProcess, NULL, &JoinerProcess_attr);
   if (JoinerTaskId == NULL) 
-  {
-      Error_Handler();
-  }
-  UITaskId = osThreadNew(UIProcess, NULL, &UIProcess_attr);
-  if (UITaskId == NULL) 
   {
       Error_Handler();
   }
@@ -396,16 +375,16 @@ static void APP_THREAD_DeviceConfig(void)
   {
     APP_THREAD_Error(ERR_THREAD_SET_STATE_CB,error);
   }
-//  error = otLinkSetChannel(NULL, C_CHANNEL_NB);
-//  if (error != OT_ERROR_NONE)
-//  {
-//    APP_THREAD_Error(ERR_THREAD_SET_CHANNEL,error);
-//  }
-//  error = otLinkSetPanId(NULL, C_PANID);
-//  if (error != OT_ERROR_NONE)
-//  {
-//    APP_THREAD_Error(ERR_THREAD_SET_PANID,error);
-//  }
+  error = otLinkSetChannel(NULL, C_CHANNEL_NB);
+  if (error != OT_ERROR_NONE)
+  {
+    APP_THREAD_Error(ERR_THREAD_SET_CHANNEL,error);
+  }
+  error = otLinkSetPanId(NULL, C_PANID);
+  if (error != OT_ERROR_NONE)
+  {
+    APP_THREAD_Error(ERR_THREAD_SET_PANID,error);
+  }
   error = otIp6SetEnabled(NULL, true);
   if (error != OT_ERROR_NONE)
   {
@@ -468,38 +447,38 @@ static void APP_THREAD_StateNotif(uint32_t NotifFlags, void *pContext)
     {
     case OT_DEVICE_ROLE_DISABLED:
       /* USER CODE BEGIN OT_DEVICE_ROLE_DISABLED */
-      HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-      HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
+      LED_Green(OFF);
+      LED_Red(OFF);
       /* USER CODE END OT_DEVICE_ROLE_DISABLED */
       break;
     case OT_DEVICE_ROLE_DETACHED:
       /* USER CODE BEGIN OT_DEVICE_ROLE_DETACHED */
-      HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-      HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
+      LED_Green(OFF);
+      LED_Red(OFF);
       /* USER CODE END OT_DEVICE_ROLE_DETACHED */
       break;
     case OT_DEVICE_ROLE_CHILD:
       /* USER CODE BEGIN OT_DEVICE_ROLE_CHILD */
-      HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-      HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
+      LED_Green(OFF);
+      LED_Red(ON);
       /* USER CODE END OT_DEVICE_ROLE_CHILD */
       break;
     case OT_DEVICE_ROLE_ROUTER :
       /* USER CODE BEGIN OT_DEVICE_ROLE_ROUTER */
-      HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
-      HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
+      LED_Green(ON);
+      LED_Red(ON);
       /* USER CODE END OT_DEVICE_ROLE_ROUTER */
       break;
     case OT_DEVICE_ROLE_LEADER :
       /* USER CODE BEGIN OT_DEVICE_ROLE_LEADER */
-      HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
-      HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
+      LED_Green(ON);
+      LED_Red(OFF);
       /* USER CODE END OT_DEVICE_ROLE_LEADER */
       break;
     default:
       /* USER CODE BEGIN DEFAULT */
-      HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-      HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
+      LED_Green(OFF);
+      LED_Red(OFF);
       /* USER CODE END DEFAULT */
       break;
     }
@@ -518,15 +497,7 @@ static void APP_THREAD_TraceError(const char * pMess, uint32_t ErrCode)
 {
   /* USER CODE BEGIN TRACE_ERROR */
   /* Toggle leds to inidicate Thread errror */
-  for(;;)
-  {
-      HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
-      HAL_Delay(250);
-      HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-      HAL_Delay(250);
-      HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
-      HAL_Delay(250);
-  }
+  LED_Red(FAST_TOGGLING);
   /* USER CODE END TRACE_ERROR */
 }
 
@@ -624,7 +595,7 @@ static void APP_THREAD_JoinerProcess(void *argument)
       uint32_t t_flags = 0;
       osThreadFlagsWait(JOIN_TASK_FLAG_BEGIN, osFlagsWaitAll, osWaitForever);
 
-      HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
+      LED_Red(OFF);
 
       if (otIp6IsEnabled(NULL))
       {
@@ -645,7 +616,9 @@ static void APP_THREAD_JoinerProcess(void *argument)
       {
         APP_THREAD_Error(ERR_THREAD_SET_STATE_CB,error);
       }
-//      ToggleBlueLedMode = FAST_TOGGLING;
+
+      LED_Blue(FAST_TOGGLING);
+
       error = otIp6SetEnabled(NULL, true);
       if (error != OT_ERROR_NONE)
       {
@@ -666,47 +639,13 @@ static void APP_THREAD_JoinerProcess(void *argument)
         APP_THREAD_Error(ERR_JOINER_START, error);
       }
           
-      HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_RESET);
       osThreadFlagsClear( JOIN_TASK_FLAG_BEGIN );
   }
 }
 
-static void UIProcess(void *argument)
-{
-    UNUSED(argument);
-
-    for (;;)
-    {
-        
-        osThreadFlagsWait(UI_TASK_FLAG_BEGIN, osFlagsWaitAll, osWaitForever);
-        
-        uint16_t i = 0;
-        do
-        {
-            i++;
-            osDelay(JOIN_BUTTON_UPDATE);
-        } while (HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == GPIO_PIN_RESET);
-
-        if (i > (JOIN_BUTTON_DELAY / JOIN_BUTTON_UPDATE))
-        {
-            osThreadFlagsSet(JoinerTaskId, JOIN_TASK_FLAG_BEGIN);
-        }
-
-        osThreadFlagsClear(UI_TASK_FLAG_BEGIN);
-        
-    }
-
-}
 /* USER CODE END FREERTOS_WRAPPER_FUNCTIONS */
 
 /* USER CODE BEGIN FD_LOCAL_FUNCTIONS */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
-    if (GPIO_Pin == B1_Pin)
-    {
-        osThreadFlagsSet(UITaskId, UI_TASK_FLAG_BEGIN);
-    }
-}
 
 /**
  * @brief Dummy request handler
@@ -726,14 +665,16 @@ static void APP_THREAD_JoinerHandler(otError OtError, void *pContext)
     {
         APP_THREAD_Error(ERR_THREAD_START, error);
     }
+    
+    LED_Blue(SLOW_TOGGLING);
 
     osDelay(20000);
 
-    joiner_state = otJoinerGetState(NULL);
-    if (joiner_state != OT_JOINER_STATE_JOINED)
-    {
-        HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
-    }
+//    joiner_state = otJoinerGetState(NULL);
+//    if (joiner_state != OT_JOINER_STATE_JOINED)
+//    {
+//        HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
+//    }
     error = otThreadSetEnabled(NULL, false);
 
     if (error != OT_ERROR_NONE)
@@ -750,7 +691,7 @@ static void APP_THREAD_JoinerHandler(otError OtError, void *pContext)
         }
     }
 
-//    otInstanceFinalize(NULL);
+    otInstanceFinalize(NULL);
 
     shci_status = SHCI_C2_FLASH_StoreData(THREAD_IP);
     if (shci_status != SHCI_Success)
@@ -766,6 +707,8 @@ static void APP_THREAD_JoinerHandler(otError OtError, void *pContext)
   {
       APP_THREAD_Error(ERR_THREAD_JOINER_CB, OtError);
   }
+
+  LED_Blue(OFF);
 }
 
 /**

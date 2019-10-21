@@ -84,6 +84,8 @@ void Error_Handler(void);
 /* USER CODE BEGIN Private defines */
 #define MAIN_FLAG_I2C_TX_CPLT   ((uint32_t) 0x01)
 #define MAIN_FLAG_I2C_RX_CPLT   ((uint32_t) 0x10)
+#define EE_FLAG_I2C_READ_CPLT   ((uint32_t) 0x20)
+#define EE_FLAG_I2C_WRITE_CPLT  ((uint32_t) 0x21)
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

@@ -94,7 +94,9 @@ typedef enum
   ERR_THREAD_CHECK_WIRELESS
   } ErrAppliIdEnum_t;
 /* USER CODE BEGIN ET */
-
+#define JOIN_TASK_FLAG_BEGIN        ((uint32_t) 0x1U)
+#define JOIN_TASK_FLAG_JOIN_SUCCESS ((uint32_t) 0x2U)
+#define JOIN_TASK_FLAG_JOIN_FAIL    ((uint32_t) 0x3U)
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/

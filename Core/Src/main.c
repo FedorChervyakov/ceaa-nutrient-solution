@@ -30,6 +30,7 @@
 #include "otp.h"
 #include "motor_shield.h"
 #include "sensors.h"
+#include "sw_led.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -198,8 +199,8 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_THREADS */
   sensors_Init();
+  UI_Init();
   /* USER CODE END RTOS_THREADS */
-
   /* Init code for STM32_WPAN */
   APPE_Init();
 
@@ -883,13 +884,13 @@ void controlPumps(void *argument)
     ms_status = MS_DC_drive(&MS, MS_DC_MOTOR_4, MS_CW, 1024); 
     if (ms_status != MS_OK) 
     {
-        HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
+        Error_Handler();
     }
     osDelay(500);
     ms_status = MS_DC_drive(&MS, MS_DC_MOTOR_4, MS_SHORT_BRAKE, 1024); 
     if (ms_status != MS_OK) 
     {
-        HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
+        Error_Handler();
     }
 
     osDelay(5000);
@@ -928,11 +929,11 @@ void Error_Handler(void)
   /* User can add his own implementation to report the HAL error return state */
   for (;;)
   {  
-	HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-	HAL_Delay(250);
-	HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
-	HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
-	HAL_Delay(250);
+    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+    HAL_Delay(250);
+    HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
+    HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+    HAL_Delay(250);
   }
 
   /* USER CODE END Error_Handler_Debug */

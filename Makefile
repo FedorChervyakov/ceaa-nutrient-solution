@@ -47,6 +47,7 @@ Core/Src/stm32wbxx_it.c \
 Core/Src/stm32wbxx_hal_msp.c \
 Core/Src/stm32wbxx_hal_timebase_tim.c \
 Core/Src/sensors.c \
+Core/Src/sw_led.c \
 STM32_WPAN/Target/hw_ipcc.c \
 STM32_WPAN/App/app_thread.c \
 Drivers/STM32WBxx_HAL_Driver/Src/stm32wbxx_hal_gpio.c \

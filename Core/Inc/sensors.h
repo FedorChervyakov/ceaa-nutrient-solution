@@ -28,7 +28,6 @@
  *  Function prototypes
  *-----------------------------------------------------------------------------*/
 void sensors_Init(void);
-
 float getpH(void);
 float getEC(void);
 float getTemperature(void);

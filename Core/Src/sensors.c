@@ -19,6 +19,7 @@
 #include "sensors.h"
 #include "cmsis_os.h"
 #include "stm32wbxx_hal.h"
+//#include "24xx256.h"
 
 /*-----------------------------------------------------------------------------
  *  Private defines
@@ -141,6 +142,17 @@ void sensors_Init(void)
   };
   calcECTaskHandle = osThreadNew(calcEC, NULL, &calcECTask_attributes);
 }
+
+/* 
+ * ===  FUNCTION  ======================================================================
+ *         Name:  calibrate_pH
+ *  Description:  
+ * =====================================================================================
+ */
+void calibrate_pH (void)
+{
+    return ;
+}		/* -----  end of function calibrate_pH  ----- */
 
 /* 
  * ===  FUNCTION  ======================================================================

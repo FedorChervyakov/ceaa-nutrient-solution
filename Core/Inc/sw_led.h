@@ -30,14 +30,20 @@
  *-----------------------------------------------------------------------------*/
 typedef enum
 {
-    NO_TOGGLING,
+    ON,
+    OFF,
     FAST_TOGGLING,
     SLOW_TOGGLING
 } LED_ToggleMode_t;
 
-
+#define LED_TOGGLE_DELAY_FAST       ((uint16_t) 300) /* LED Toggle fast delay */
+#define LED_TOGGLE_DELAY_SLOW       ((uint16_t) 900) /* LED Toggle slow delay */
 /*-----------------------------------------------------------------------------
  *  Exported function prototypes
  *-----------------------------------------------------------------------------*/
+void UI_Init(void);
+void LED_Green(LED_ToggleMode_t mode);
+void LED_Blue(LED_ToggleMode_t mode);
+void LED_Red(LED_ToggleMode_t mode);
 
 #endif
