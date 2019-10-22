@@ -55,6 +55,8 @@ void UsageFault_Handler(void);
 void DebugMon_Handler(void);
 void PVD_PVM_IRQHandler(void);
 void FLASH_IRQHandler(void);
+void EXTI0_IRQHandler(void);
+void EXTI1_IRQHandler(void);
 void EXTI4_IRQHandler(void);
 void DMA1_Channel1_IRQHandler(void);
 void DMA1_Channel2_IRQHandler(void);

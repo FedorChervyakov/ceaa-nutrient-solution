@@ -24,33 +24,13 @@
 #include "stm32wbxx_hal.h"
 #include "cmsis_os.h"
 
-#include "app_thread.h"
-#include "sensors.h"
-
-extern osThreadId_t JoinerTaskId;
-extern osEventFlagsId_t sens_evt_id;
-
-/*-----------------------------------------------------------------------------
- *  Private defines
- *-----------------------------------------------------------------------------*/
-
-#define BT1_TASK_FLAG_BEGIN         ((uint32_t) 0x1U)
-#define BT2_TASK_FLAG_BEGIN         ((uint32_t) 0x2U)
-
-#define BT1_DELAY                   ((uint16_t) 3000) /* Hold button 1 for             */
-#define BT1_UPDATE                  ((uint16_t) 30)   /* Read button 1 state every     */
-
-#define BT2_DELAY                   ((uint16_t) 3000) /* Hold button 2 for             */
-#define BT2_UPDATE                  ((uint16_t) 30)   /* Read button 2 2 state every   */
-
-#define LED_UPDATE                  ((uint16_t) 100)  /* Update LED every              */
-
 /*-----------------------------------------------------------------------------
  *  Private function prototypes
  *-----------------------------------------------------------------------------*/
 static void LED_Process(void *argument);
 static void BT1_Process(void *argument);
 static void BT2_Process(void *argument);
+static void BT3_Process(void *argument);
 
 /*-----------------------------------------------------------------------------
  *  Private variables
@@ -62,9 +42,14 @@ osStaticThreadDef_t BT1_TaskControlBlock;
 static osThreadId_t BT2_TaskId;               /* Task managing button 2 (SW2)   */
 uint32_t BT2_TaskBuffer[ 128 ];
 osStaticThreadDef_t BT2_TaskControlBlock;
+static osThreadId_t BT3_TaskId;               /* Task managing button 3 (SW3)   */
+uint32_t BT3_TaskBuffer[ 128 ];
+osStaticThreadDef_t BT3_TaskControlBlock;
 static osThreadId_t LED_TaskId;               /* Task managing various leds     */
 uint32_t LED_TaskBuffer[ 128 ];
 osStaticThreadDef_t LED_TaskControlBlock;
+
+osEventFlagsId_t sw_evt_id;
 
 static volatile LED_ToggleMode_t LED_Red_Mode;
 static volatile LED_ToggleMode_t LED_Blue_Mode;
@@ -78,14 +63,17 @@ static volatile LED_ToggleMode_t LED_Green_Mode;
  */
 void UI_Init (void)
 {
+    sw_evt_id = osEventFlagsNew(NULL); 
+
     const osThreadAttr_t BT1_Process_attr = {
         .name = "BT1_Task",
         .stack_mem = &BT1_TaskBuffer[0],
         .stack_size = sizeof(BT1_TaskBuffer),
         .cb_mem = &BT1_TaskControlBlock,
         .cb_size = sizeof(BT1_TaskControlBlock),
-        .priority = (osPriority_t) osPriorityNormal,
+        .priority = (osPriority_t) osPriorityLow,
     };
+
     BT1_TaskId = osThreadNew(BT1_Process, NULL, &BT1_Process_attr);
     if (BT1_TaskId == NULL) 
     {
@@ -98,10 +86,24 @@ void UI_Init (void)
         .stack_size = sizeof(BT2_TaskBuffer),
         .cb_mem = &BT2_TaskControlBlock,
         .cb_size = sizeof(BT2_TaskControlBlock),
-        .priority = (osPriority_t) osPriorityNormal,
+        .priority = (osPriority_t) osPriorityLow,
     };
     BT2_TaskId = osThreadNew(BT2_Process, NULL, &BT2_Process_attr);
     if (BT2_TaskId == NULL) 
+    {
+        Error_Handler();
+    }
+
+    const osThreadAttr_t BT3_Process_attr = {
+        .name = "BT3_Task",
+        .stack_mem = &BT3_TaskBuffer[0],
+        .stack_size = sizeof(BT3_TaskBuffer),
+        .cb_mem = &BT3_TaskControlBlock,
+        .cb_size = sizeof(BT3_TaskControlBlock),
+        .priority = (osPriority_t) osPriorityLow,
+    };
+    BT3_TaskId = osThreadNew(BT3_Process, NULL, &BT3_Process_attr);
+    if (BT3_TaskId == NULL) 
     {
         Error_Handler();
     }
@@ -112,7 +114,7 @@ void UI_Init (void)
         .stack_size = sizeof(LED_TaskBuffer),
         .cb_mem = &LED_TaskControlBlock,
         .cb_size = sizeof(LED_TaskControlBlock),
-        .priority = (osPriority_t) osPriorityNormal,
+        .priority = (osPriority_t) osPriorityLow,
     };
     LED_TaskId = osThreadNew(LED_Process, NULL, &LED_Process_attr);
     if (LED_TaskId == NULL) 
@@ -259,37 +261,6 @@ static void LED_Process(void *argument )
     }
 }		/* -----  end of function LED_Process  ----- */
 
-/* 
- * ===  FUNCTION  ======================================================================
- *         Name:  BT2_Process
- *  Description:  
- * =====================================================================================
- */
-static void BT2_Process(void *argument)
-{
-    UNUSED(argument);
-
-    for (;;)
-    {
-        
-        osThreadFlagsWait(BT2_TASK_FLAG_BEGIN, osFlagsWaitAll, osWaitForever);
-        
-        uint16_t i = 0;
-        do
-        {
-            i++;
-            osDelay(BT2_UPDATE);
-        } while (HAL_GPIO_ReadPin(B2_GPIO_Port, B2_Pin) == GPIO_PIN_RESET);
-
-        if (i > (BT2_DELAY / BT2_UPDATE))
-        {
-            osEventFlagsSet(sens_evt_id, SENSORS_FLAG_PH_CALIB_BEGIN);
-        }
-
-
-        osThreadFlagsClear(BT2_TASK_FLAG_BEGIN);
-    }
-}
 
 /* 
  * ===  FUNCTION  ======================================================================
@@ -310,18 +281,103 @@ static void BT1_Process(void *argument)
         do
         {
             i++;
-            osDelay(BT1_UPDATE);
+            osDelay(UPDATE_BUTTON_DELAY);
         } while (HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == GPIO_PIN_RESET);
 
-        if (i > (BT1_DELAY / BT1_UPDATE))
+        if (i > (VERY_LONG_PRESS_DELAY / UPDATE_BUTTON_DELAY))
         {
-            osThreadFlagsSet(JoinerTaskId, JOIN_TASK_FLAG_BEGIN);
+            osEventFlagsSet(sw_evt_id, BT1_VERY_LONG_PRESS);
+        }
+        else if (i > (LONG_PRESS_DELAY / UPDATE_BUTTON_DELAY))
+        {
+            osEventFlagsSet(sw_evt_id, BT1_LONG_PRESS);
+        }
+        else if (i > (SHORT_PRESS_DELAY / UPDATE_BUTTON_DELAY))
+        {
+            osEventFlagsSet(sw_evt_id, BT1_SHORT_PRESS);
         }
 
         osThreadFlagsClear(BT1_TASK_FLAG_BEGIN);
     }
 }
 
+/* 
+ * ===  FUNCTION  ======================================================================
+ *         Name:  BT2_Process
+ *  Description:  
+ * =====================================================================================
+ */
+static void BT2_Process(void *argument)
+{
+    UNUSED(argument);
+
+    for (;;)
+    {
+        
+        osThreadFlagsWait(BT2_TASK_FLAG_BEGIN, osFlagsWaitAll, osWaitForever);
+        
+        uint16_t i = 0;
+        do
+        {
+            i++;
+            osDelay(UPDATE_BUTTON_DELAY);
+        } while (HAL_GPIO_ReadPin(B2_GPIO_Port, B2_Pin) == GPIO_PIN_RESET);
+
+        if (i > (VERY_LONG_PRESS_DELAY / UPDATE_BUTTON_DELAY))
+        {
+            osEventFlagsSet(sw_evt_id, BT2_VERY_LONG_PRESS);
+        }
+        else if (i > (LONG_PRESS_DELAY / UPDATE_BUTTON_DELAY))
+        {
+            osEventFlagsSet(sw_evt_id, BT2_LONG_PRESS);
+        }
+        else if (i > (SHORT_PRESS_DELAY / UPDATE_BUTTON_DELAY))
+        {
+            osEventFlagsSet(sw_evt_id, BT2_SHORT_PRESS);
+        }
+
+        osThreadFlagsClear(BT2_TASK_FLAG_BEGIN);
+    }
+}
+
+/* 
+ * ===  FUNCTION  ======================================================================
+ *         Name:  BT3_Process
+ *  Description:  
+ * =====================================================================================
+ */
+static void BT3_Process(void *argument)
+{
+    UNUSED(argument);
+
+    for (;;)
+    {
+        
+        osThreadFlagsWait(BT3_TASK_FLAG_BEGIN, osFlagsWaitAll, osWaitForever);
+        
+        uint16_t i = 0;
+        do
+        {
+            i++;
+            osDelay(UPDATE_BUTTON_DELAY);
+        } while (HAL_GPIO_ReadPin(B3_GPIO_Port, B3_Pin) == GPIO_PIN_RESET);
+
+        if (i > (VERY_LONG_PRESS_DELAY / UPDATE_BUTTON_DELAY))
+        {
+            osEventFlagsSet(sw_evt_id, BT3_VERY_LONG_PRESS);
+        }
+        else if (i > (LONG_PRESS_DELAY / UPDATE_BUTTON_DELAY))
+        {
+            osEventFlagsSet(sw_evt_id, BT3_LONG_PRESS);
+        }
+        else if (i > (SHORT_PRESS_DELAY / UPDATE_BUTTON_DELAY))
+        {
+            osEventFlagsSet(sw_evt_id, BT3_SHORT_PRESS);
+        }
+
+        osThreadFlagsClear(BT3_TASK_FLAG_BEGIN);
+    }
+}
 /* 
  * ===  FUNCTION  ======================================================================
  *         Name:  HAL_GPIO_EXTI_Callback
@@ -337,6 +393,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
         break;
     case B2_Pin:
         osThreadFlagsSet(BT2_TaskId, BT2_TASK_FLAG_BEGIN);
+        break;
+    case B3_Pin:
+        osThreadFlagsSet(BT3_TaskId, BT3_TASK_FLAG_BEGIN);
         break;
     default:
         break;

@@ -39,6 +39,7 @@ typedef enum
 /*-----------------------------------------------------------------------------
  *  Exported function prototypes
  *-----------------------------------------------------------------------------*/
+void Init_24xx256(void);
 EEErr_t EE_Write8(uint8_t i2c_addr, uint16_t data_addr, uint8_t *data, uint8_t len); 
 EEErr_t EE_Read8(uint8_t i2c_addr, uint16_t data_addr, uint8_t *data, uint8_t len);
 EEErr_t EE_Write32(uint8_t i2c_addr, uint16_t data_addr, uint32_t *data, uint8_t len); 

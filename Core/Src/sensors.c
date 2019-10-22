@@ -20,8 +20,10 @@
 #include "cmsis_os.h"
 #include "stm32wbxx_hal.h"
 #include "24xx256.h"
+#include "sw_led.h"
 
 extern ADC_HandleTypeDef hadc1;
+extern osEventFlagsId_t sw_evt_id;
 
 /*-----------------------------------------------------------------------------
  *  Private defines
@@ -29,8 +31,18 @@ extern ADC_HandleTypeDef hadc1;
 /* Size of ADC buffer */
 #define ADC_BUFFERSIZE          ((uint32_t) 4)
 #define ADC_COMPLETE_FLAG       ((uint32_t) 1)
+#define ADC_BEGIN_FLAG          ((uint32_t) 2)
 #define ADC_DELAY               ((uint32_t) 1000)   /* 1 Hz */
 #define DIGITAL_SCALE_12BITS    ((uint16_t) 0x0FFF)
+#define USER_TIMEOUT            ((uint32_t) 30000) /* 30 seconds */
+
+#define LM35_AMP_GAIN             ((float) 6.1)
+
+#define PH_CAL_SOLUTION_1       ((float) 7.0)   /* pH of a calibration solution 1 */
+#define PH_CAL_SOLUTION_2       ((float) 4.8)   /* pH of a calibration solution 2 */
+
+#define EC_CAL_SOLUTION_1       ((float) 1.413)   /* EC mS/cm of a calibration solution 1 */
+#define EC_CAL_SOLUTION_2       ((float) 12.88)   /* EC mS/cm of a calibration solution 2 */
 
 /*-----------------------------------------------------------------------------
  *  Private macro
@@ -94,12 +106,16 @@ static float EC_intercept;
  *  Private function prototypes
  *-----------------------------------------------------------------------------*/
 int8_t readStoredCalibration(void);
+int8_t storePHCalibration(void);
+int8_t storeECCalibration(void);
+
+static void calibratePH(void *argument);
+static void calibrateEC(void *argument);
+
 static void calcT(void *argument);
 static void calcPH(void *argument);
 static void calcEC(void *argument);
 static void readADC(void *argument);
-static void calibratePH(void *argument);
-static void calibrateEC(void *argument);
 
 /* 
  * ===  FUNCTION  ======================================================================
@@ -218,6 +234,58 @@ int8_t readStoredCalibration ( void )
     return SENSORS_OK;
 }		/* -----  end of function readStoredCalibration  ----- */
 
+
+/* 
+ * ===  FUNCTION  ======================================================================
+ *         Name:  storePHCalibration
+ *  Description:  
+ * =====================================================================================
+ */
+int8_t storePHCalibration(void)
+{
+    EEErr_t eeerr = EE_OK;
+
+    eeerr = EE_WriteFloat(EE_I2C_ADDR, PH_SLOPE_EE_ADDR, &pH_slope, 1); 
+    if (eeerr != EE_OK)
+    {
+        return SENSORS_CAL_WRITE_FAIL;
+    }
+
+    eeerr = EE_WriteFloat(EE_I2C_ADDR, PH_INTCPT_EE_ADDR, &pH_intercept, 1); 
+    if (eeerr != EE_OK)
+    {
+        return SENSORS_CAL_WRITE_FAIL;
+    }
+
+    return SENSORS_OK;
+}
+
+/* 
+ * ===  FUNCTION  ======================================================================
+ *         Name:  storeECCalibration
+ *  Description:  
+ * =====================================================================================
+ */
+int8_t storeECCalibration(void)
+{
+    EEErr_t eeerr = EE_OK;
+
+    eeerr = EE_WriteFloat(EE_I2C_ADDR, EC_SLOPE_EE_ADDR, &EC_slope, 1); 
+    if (eeerr != EE_OK)
+    {
+        return SENSORS_CAL_WRITE_FAIL;
+    }
+
+    eeerr = EE_WriteFloat(EE_I2C_ADDR, EC_INTCPT_EE_ADDR, &EC_intercept, 1); 
+    if (eeerr != EE_OK)
+    {
+        return SENSORS_CAL_WRITE_FAIL;
+    }
+
+    return SENSORS_OK;
+
+}
+
 /* 
  * ===  FUNCTION  ======================================================================
  *         Name:  calibratePH
@@ -226,12 +294,100 @@ int8_t readStoredCalibration ( void )
  */
 static void calibratePH (void *argument)
 {
+
+    float v_s1 = 0;
+    float v_s2 = 0;
+
     for (;;)
     {
-        osEventFlagsWait( sens_evt_id, SENSORS_FLAG_PH_CALIB_BEGIN, 
+        osEventFlagsWait( sw_evt_id, BT1_VERY_LONG_PRESS, 
+                          osFlagsWaitAll, osWaitForever);
+    
+        v_s1 = 0;
+        v_s2 = 0;
+
+        LED_Blue(FAST_TOGGLING);
+
+        if (osEventFlagsWait( sw_evt_id, BT1_LONG_PRESS,
+                              osFlagsWaitAll, USER_TIMEOUT) == osErrorTimeout)
+        {
+            LED_Blue(OFF);
+            continue;
+        }
+        
+        LED_Blue(SLOW_TOGGLING);
+
+        osDelay(5000);
+
+        osThreadFlagsSet(readADCTaskHandle, ADC_BEGIN_FLAG);
+
+        osEventFlagsWait( sens_evt_id, SENSORS_FLAG_ADC_READY,
                           osFlagsWaitAll, osWaitForever);
 
+        v_s1 = ch2_mv;
 
+        LED_Blue(FAST_TOGGLING);
+
+        if (osEventFlagsWait( sw_evt_id, BT1_LONG_PRESS,
+                              osFlagsWaitAll, USER_TIMEOUT) == osErrorTimeout)
+        {
+            LED_Blue(OFF);
+            continue;
+        }
+
+        LED_Blue(SLOW_TOGGLING);
+
+        osDelay(5000);
+
+        osThreadFlagsSet(readADCTaskHandle, ADC_BEGIN_FLAG);
+
+        osEventFlagsWait( sens_evt_id, SENSORS_FLAG_ADC_READY,
+                          osFlagsWaitAll, osWaitForever);
+
+        v_s2 = ch2_mv;
+
+        LED_Blue(OFF);
+
+        LED_Green(FAST_TOGGLING);
+
+        pH_slope = (PH_CAL_SOLUTION_1 - PH_CAL_SOLUTION_1) / (v_s1 - v_s2);
+        pH_intercept = (v_s1 * pH_slope) - PH_CAL_SOLUTION_1;
+
+        if (storePHCalibration() != SENSORS_OK)
+        {
+            LED_Green(OFF);
+
+            LED_Red(ON);    
+            osDelay(250);
+            LED_Red(OFF);    
+            osDelay(250);
+            LED_Red(ON);    
+            osDelay(250);
+            LED_Red(OFF);    
+            osDelay(250);
+            LED_Red(ON);    
+            osDelay(250);
+            LED_Red(OFF);    
+            osDelay(250);
+        }
+        else
+        {
+
+            LED_Green(OFF);
+
+            LED_Green(ON);    
+            osDelay(250);
+            LED_Green(OFF);    
+            osDelay(250);
+            LED_Green(ON);    
+            osDelay(250);
+            LED_Green(OFF);    
+            osDelay(250);
+            LED_Green(ON);    
+            osDelay(250);
+            LED_Green(OFF);    
+            osDelay(250);
+        }
     }
 }		/* -----  end of function calibratePH  ----- */
 
@@ -245,9 +401,8 @@ static void calibrateEC (void *argument)
 {
     for (;;)
     {
-        osEventFlagsWait( sens_evt_id, SENSORS_FLAG_EC_CALIB_BEGIN, 
+        osEventFlagsWait( sw_evt_id, BT2_VERY_LONG_PRESS, 
                           osFlagsWaitAll, osWaitForever);
-
 
     }
 }		/* -----  end of function calibrateEC  ----- */
@@ -263,7 +418,7 @@ static void calcT(void *argument)
     for (;;)
     {
         osEventFlagsWait(sens_evt_id, SENSORS_FLAG_ADC_READY, osFlagsWaitAll, osWaitForever);
-        temperature = 0.1 * ch1_mv;
+        temperature = 0.1 * ch1_mv / LM35_AMP_GAIN;
 	    osEventFlagsSet(sens_evt_id, SENSORS_FLAG_TEMPERATURE_READY);
     }   
 }
@@ -280,7 +435,7 @@ static void calcPH(void *argument)
     {
         osEventFlagsWait(sens_evt_id, SENSORS_FLAG_TEMPERATURE_READY, 
 			 osFlagsWaitAll, osWaitForever);
-        pH = ch2_mv;
+        pH = pH_slope * ch2_mv + pH_intercept;
 	    osEventFlagsSet(sens_evt_id, SENSORS_FLAG_PH_READY);
     }   
 }
@@ -298,7 +453,7 @@ static void calcEC(void *argument)
         osEventFlagsWait(sens_evt_id, SENSORS_FLAG_TEMPERATURE_READY, 
 			 osFlagsWaitAll, osWaitForever);
     
-        EC = ch3_mv;
+        EC = EC_slope * ch3_mv + EC_intercept;
 	    osEventFlagsSet(sens_evt_id, SENSORS_FLAG_EC_READY);
     }   
 }
@@ -316,12 +471,12 @@ static void readADC(void *argument)
   /* Infinite loop */
   for(;;)
   {
+    /*## Wait for ADC begin flag #############################################*/
+    osThreadFlagsWait(ADC_BEGIN_FLAG, osFlagsWaitAll, ADC_DELAY);
+      
     /*## Start ADC conversions ###############################################*/
     /* Clear ADC conversion flag */
     osThreadFlagsClear(ADC_COMPLETE_FLAG);
-
-//    osEventFlagsClear(sens_evt_id, SENSORS_FLAG_ADC_READY | SENSORS_FLAG_PH_READY
-//                      | SENSORS_FLAG_TEMPERATURE_READY | SENSORS_FLAG_EC_READY);
 
     /* Start ADC conversion with DMA */
     if ( HAL_ADC_Start_DMA(&hadc1, (uint32_t *) uhADCxConvertedData, ADC_BUFFERSIZE) != HAL_OK)
@@ -352,16 +507,8 @@ static void readADC(void *argument)
     ch3_mv = __ADC_CALC_DATA_VOLTAGE((float) int_ref,
                             (float) uhADCxConvertedData[3]);
 
-    /*## Generate voltage strings ############################################*/
-//    gcvt(ch1_mv, 5, ch1_str);
-//    gcvt(ch2_mv, 5, ch2_str);
-//    gcvt(ch3_mv, 5, ch3_str);
-
     /*## Set ADC ready event flag #############################################*/
     osEventFlagsSet(sens_evt_id, SENSORS_FLAG_ADC_READY);
-
-    /*## Delay ###############################################################*/
-    osDelay(ADC_DELAY);
   }
 }
 
@@ -387,7 +534,6 @@ float getEC ( void )
     return EC;
 }		/* -----  end of function getEC  ----- */
 
-
 /* 
  * ===  FUNCTION  ======================================================================
  *         Name:  getTemperature
@@ -398,7 +544,6 @@ float getTemperature ( void )
 {
     return temperature;
 }		/* -----  end of function getTemperature  ----- */
-
 
 /**
   * @brief  ADC conversion completed callback

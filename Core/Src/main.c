@@ -201,6 +201,7 @@ int main(void)
   sensors_Init();
   UI_Init();
   /* USER CODE END RTOS_THREADS */
+
   /* Init code for STM32_WPAN */
   APPE_Init();
 
@@ -547,8 +548,8 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pins : B2_Pin B3_Pin */
   GPIO_InitStruct.Pin = B2_Pin|B3_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /*Configure GPIO pins : STLINK_RX_Pin STLINK_TX_Pin */
@@ -560,6 +561,12 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI1_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
+
   HAL_NVIC_SetPriority(EXTI4_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(EXTI4_IRQn);
 
@@ -877,21 +884,21 @@ void controlPumps(void *argument)
 {
   /* USER CODE BEGIN controlPumps */
   int8_t ms_status;
-  Motor_Shield_Init();
+//  Motor_Shield_Init();
   /* Infinite loop */
   for(;;)
   {
-    ms_status = MS_DC_drive(&MS, MS_DC_MOTOR_4, MS_CW, 1024); 
-    if (ms_status != MS_OK) 
-    {
-        Error_Handler();
-    }
-    osDelay(500);
-    ms_status = MS_DC_drive(&MS, MS_DC_MOTOR_4, MS_SHORT_BRAKE, 1024); 
-    if (ms_status != MS_OK) 
-    {
-        Error_Handler();
-    }
+//    ms_status = MS_DC_drive(&MS, MS_DC_MOTOR_4, MS_CW, 1024); 
+//    if (ms_status != MS_OK) 
+//    {
+//        Error_Handler();
+//    }
+//    osDelay(500);
+//    ms_status = MS_DC_drive(&MS, MS_DC_MOTOR_4, MS_SHORT_BRAKE, 1024); 
+//    if (ms_status != MS_OK) 
+//    {
+//        Error_Handler();
+//    }
 
     osDelay(5000);
   }

@@ -71,8 +71,10 @@ void Error_Handler(void);
 #define JTCK_GPIO_Port GPIOA
 #define B2_Pin GPIO_PIN_0
 #define B2_GPIO_Port GPIOD
+#define B2_EXTI_IRQn EXTI0_IRQn
 #define B3_Pin GPIO_PIN_1
 #define B3_GPIO_Port GPIOD
+#define B3_EXTI_IRQn EXTI1_IRQn
 #define JTDO_Pin GPIO_PIN_3
 #define JTDO_GPIO_Port GPIOB
 #define LD1_Pin GPIO_PIN_5

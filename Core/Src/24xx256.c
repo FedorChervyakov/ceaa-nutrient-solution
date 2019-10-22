@@ -16,18 +16,19 @@
  * =====================================================================================
  */
 
-#include "24xx256.h"
 #include "stm32wbxx_hal.h"
 #include "cmsis_os.h"
+#include "main.h"
+#include "24xx256.h"
 
 extern I2C_HandleTypeDef hi2c1;
 extern osMutexId_t hi2c1_mx;
 extern osEventFlagsId_t evt_id;
 
 /*-----------------------------------------------------------------------------
- *  Private function prototypes
+ *  Function prototypes
  *-----------------------------------------------------------------------------*/
-void 24xx256_Init(void);
+void Init_24xx256(void);
 EEErr_t EE_Write8(uint8_t i2c_addr, uint16_t data_addr, uint8_t *data, uint8_t len); 
 EEErr_t EE_Read8(uint8_t i2c_addr, uint16_t data_addr, uint8_t *data, uint8_t len);
 EEErr_t EE_Write32(uint8_t i2c_addr, uint16_t data_addr, uint32_t *data, uint8_t len); 
@@ -40,14 +41,14 @@ void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef * hi2c);
 
 /* 
  * ===  FUNCTION  ======================================================================
- *         Name:  24xx256_Init
+ *         Name:  Init_24xx256
  *  Description:  
  * =====================================================================================
  */
-void 24xx256_Init(void)
+void Init_24xx256(void)
 {
 
-}		/* -----  end of function 24xx256_Init  ----- */
+}		/* -----  end of function Init_24xx256  ----- */
 
 /* 
  * ===  FUNCTION  ======================================================================
@@ -70,7 +71,7 @@ EEErr_t EE_Write8(uint8_t i2c_addr, uint16_t data_addr, uint8_t *data, uint8_t l
         status = EE_ERR_WRITE;
     }
 
-    osEventFlagsWait(evt_id, EE_FLAG_I2C_WRITE_CPLT, oFlagsWaitAll, osWaitForever);
+    osEventFlagsWait(evt_id, EE_FLAG_I2C_WRITE_CPLT, osFlagsWaitAll, osWaitForever);
 
     osMutexRelease(hi2c1_mx);
 
@@ -98,7 +99,7 @@ EEErr_t EE_Read8(uint8_t i2c_addr, uint16_t data_addr, uint8_t *data, uint8_t le
         status = EE_ERR_READ;
     }
 
-    osEventFlagsWait(evt_id, EE_FLAG_I2C_READ_CPLT, oFlagsWaitAll, osWaitForever);
+    osEventFlagsWait(evt_id, EE_FLAG_I2C_READ_CPLT, osFlagsWaitAll, osWaitForever);
 
     osMutexRelease(hi2c1_mx);
 
@@ -145,8 +146,8 @@ EEErr_t EE_Read32(uint8_t i2c_addr, uint16_t data_addr, uint32_t *data, uint8_t 
 
     for (uint8_t i=0; i < len; i++)
     {
-       temp = (uint32_t) ((*(data_8+i) << 24) + (*(data_8+i+1) << 16)
-                       + (*(data_8+i+2) << 8) + (*(data_8+i+3)); 
+       temp = (uint32_t) ((*(data_8+i) << 24) + (*(data_8+i+1) << 16) \
+                       + (*(data_8+i+2) << 8) + (*(data_8+i+3))); 
        *(data+i) = temp;
     }
 
@@ -162,17 +163,14 @@ EEErr_t EE_Read32(uint8_t i2c_addr, uint16_t data_addr, uint32_t *data, uint8_t 
 EEErr_t EE_WriteFloat(uint8_t i2c_addr, uint16_t data_addr, float *data, uint8_t len)
 {
     EEErr_t status = EE_OK;
-    uint8_t data_8[64] = {0};
+    uint8_t data_8[sizeof(float)*16];
 
     for (uint8_t i=0; i < len; i++)
     {
-       data_8[4*i] = (uint8_t) (*(data+i) >> 24); 
-       data_8[4*i+1] = (uint8_t) (*(data+i) >> 16); 
-       data_8[4*i+2] = (uint8_t) (*(data+i) >> 8); 
-       data_8[4*i+3] = (uint8_t) (*(data+i)); 
+       *(float*)(data_8+i*sizeof(float)) = *(data+i); 
     }
 
-    status = EE_Write8(i2c_addr, data_addr, &data_8[0], 4*len);
+    status = EE_Write8(i2c_addr, data_addr, &data_8[0], sizeof(float)*len);
 
     return status;
 }		/* -----  end of function EE_WriteFloat  ----- */
@@ -186,20 +184,18 @@ EEErr_t EE_WriteFloat(uint8_t i2c_addr, uint16_t data_addr, float *data, uint8_t
 EEErr_t EE_ReadFloat(uint8_t i2c_addr, uint16_t data_addr, float *data, uint8_t len)
 {
     EEErr_t status = EE_OK;
-    uint8_t data_8[64] = {0};
-    uint32_t temp = 0;
+    uint8_t data_8[sizeof(float)*16];
 
-    status = EE_Read8(i2c_addr, data_addr, &data_8[0], 4*len);
+    status = EE_Read8(i2c_addr, data_addr, &data_8[0], sizeof(float)*len);
 
     for (uint8_t i=0; i < len; i++)
     {
-       temp = (uint32_t) ((*(data_8+i) << 24) + (*(data_8+i+1) << 16)
-                       + (*(data_8+i+2) << 8) + (*(data_8+i+3)); 
-       *(data+i) = temp;
+       *(data+i) = *(float*)(&data_8[i*sizeof(float)]); 
     }
 
     return status;
 }		/* -----  end of function EE_ReadFloat  ------ */
+
 void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef * hi2c)
 {
     osEventFlagsSet(evt_id, EE_FLAG_I2C_READ_CPLT);

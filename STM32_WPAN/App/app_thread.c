@@ -41,13 +41,13 @@
 #include "stm32wbxx_hal.h"
 #include "main.h"
 #include "sensors.h"
-//#include "24xx256.h"
+#include "24xx256.h"
 #include "sw_led.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+extern osEventFlagsId_t sw_evt_id;
 /* USER CODE END PTD */
 
 /* Private defines -----------------------------------------------------------*/
@@ -88,6 +88,7 @@ const osThreadAttr_t JoinerProcess_attr = {
 #define C_RESOURCE_EC               "ec"
 #define C_RESOURCE_TEMP             "temp"
 #define C_PASSWORD                  "AllBytesWrong"
+
 /* USER CODE END PD */
 
 /* Private macros ------------------------------------------------------------*/
@@ -363,11 +364,11 @@ void APP_THREAD_Error(uint32_t ErrId, uint32_t ErrCode)
 static void APP_THREAD_DeviceConfig(void)
 {
   otError error;
-//  error = otInstanceErasePersistentInfo(NULL);
-//  if (error != OT_ERROR_NONE)
-//  {
-//    APP_THREAD_Error(ERR_THREAD_ERASE_PERSISTENT_INFO,error);
-//  }
+  error = otInstanceErasePersistentInfo(NULL);
+  if (error != OT_ERROR_NONE)
+  {
+    APP_THREAD_Error(ERR_THREAD_ERASE_PERSISTENT_INFO,error);
+  }
   otInstanceFinalize(NULL);
   otInstanceInitSingle();
   error = otSetStateChangedCallback(NULL, APP_THREAD_StateNotif, NULL);
@@ -593,9 +594,12 @@ static void APP_THREAD_JoinerProcess(void *argument)
   {
 
       uint32_t t_flags = 0;
-      osThreadFlagsWait(JOIN_TASK_FLAG_BEGIN, osFlagsWaitAll, osWaitForever);
+      osEventFlagsWait( sw_evt_id, BT3_VERY_LONG_PRESS,
+                        osFlagsWaitAll, osWaitForever);
 
       LED_Red(OFF);
+      LED_Blue(OFF);
+      LED_Green(OFF);
 
       if (otIp6IsEnabled(NULL))
       {
@@ -691,7 +695,7 @@ static void APP_THREAD_JoinerHandler(otError OtError, void *pContext)
         }
     }
 
-    otInstanceFinalize(NULL);
+//    otInstanceFinalize(NULL);
 
     shci_status = SHCI_C2_FLASH_StoreData(THREAD_IP);
     if (shci_status != SHCI_Success)
@@ -1194,7 +1198,7 @@ static void RxCpltCallback(void)
   }
 
   /* Once a character has been sent, put back the device in reception mode */
-//  HW_UART_Receive_IT(CFG_CLI_UART, aRxBuffer, 1U, RxCpltCallback);
+  //HW_UART_Receive_IT(CFG_CLI_UART, aRxBuffer, 1U, RxCpltCallback);
 }
 #endif /* (CFG_FULL_LOW_POWER == 0) */
 #endif /* (CFG_USB_INTERFACE_ENABLE != 0) */
@@ -1287,7 +1291,7 @@ void APP_THREAD_Init_UART_CLI(void)
 #if (CFG_USB_INTERFACE_ENABLE != 0)
 #else
 #if (CFG_FULL_LOW_POWER == 0)
-//  HW_UART_Receive_IT(CFG_CLI_UART, aRxBuffer, 1, RxCpltCallback);
+  //HW_UART_Receive_IT(CFG_CLI_UART, aRxBuffer, 1, RxCpltCallback);
 #endif /* (CFG_FULL_LOW_POWER == 0) */
 #endif /* (CFG_USB_INTERFACE_ENABLE != 0) */
 }
@@ -1324,7 +1328,7 @@ void TL_THREAD_CliNotReceived( TL_EvtPacket_t * Notbuffer )
 #if (CFG_USB_INTERFACE_ENABLE != 0)
     VCP_SendData( l_CliBuffer->cmdserial.cmd.payload, l_size, HostTxCb);
 #else
-//    HW_UART_Transmit_IT(CFG_CLI_UART, l_CliBuffer->cmdserial.cmd.payload, l_size, HostTxCb);
+    //HW_UART_Transmit_IT(CFG_CLI_UART, l_CliBuffer->cmdserial.cmd.payload, l_size, HostTxCb);
 #endif /*USAGE_OF_VCP */
   }
   else
