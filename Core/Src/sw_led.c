@@ -28,6 +28,8 @@
 #include "sensors.h"
 
 extern osThreadId_t JoinerTaskId;
+extern osEventFlagsId_t sens_evt_id;
+
 /*-----------------------------------------------------------------------------
  *  Private defines
  *-----------------------------------------------------------------------------*/
@@ -281,8 +283,9 @@ static void BT2_Process(void *argument)
 
         if (i > (BT2_DELAY / BT2_UPDATE))
         {
-            osThreadFlagsSet(JoinerTaskId, JOIN_TASK_FLAG_BEGIN);
+            osEventFlagsSet(sens_evt_id, SENSORS_FLAG_PH_CALIB_BEGIN);
         }
+
 
         osThreadFlagsClear(BT2_TASK_FLAG_BEGIN);
     }

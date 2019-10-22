@@ -19,7 +19,7 @@
 #include "sensors.h"
 #include "cmsis_os.h"
 #include "stm32wbxx_hal.h"
-//#include "24xx256.h"
+#include "24xx256.h"
 
 /*-----------------------------------------------------------------------------
  *  Private defines
@@ -67,6 +67,12 @@ osStaticThreadDef_t calcECTaskControlBlock;
 osThreadId_t readADCTaskHandle;
 uint32_t readADCTaskBuffer[ 128 ];
 osStaticThreadDef_t readADCTaskControlBlock;
+osThreadId_t calibratePHTaskHandle;
+uint32_t calibratePHTaskBuffer[ 128 ];
+osStaticThreadDef_t calibratePHTaskControlBlock;
+osThreadId_t calibrateECTaskHandle;
+uint32_t calibrateECTaskBuffer[ 128 ];
+osStaticThreadDef_t calibrateECTaskControlBlock;
 
 osEventFlagsId_t sens_evt_id;
 
@@ -78,13 +84,21 @@ static volatile float pH;
 static volatile float EC;
 static volatile float temperature;
 
+static float pH_slope;
+static float pH_intercept;
+
+static float EC_slope;
+static float EC_intercept;
+
 /*-----------------------------------------------------------------------------
  *  Private function prototypes
  *-----------------------------------------------------------------------------*/
-void calcT(void *argument);
-void calcPH(void *argument);
-void calcEC(void *argument);
-void readADC(void *argument);
+static void calcT(void *argument);
+static void calcPH(void *argument);
+static void calcEC(void *argument);
+static void readADC(void *argument);
+static void calibratePH(void *argument);
+static void calibrateEC(void *argument);
 
 /* 
  * ===  FUNCTION  ======================================================================
@@ -94,7 +108,6 @@ void readADC(void *argument);
  */
 void sensors_Init(void)
 {
-
   /* definition and creation of sensors' eventFlags */
   sens_evt_id = osEventFlagsNew(NULL);
 
@@ -141,18 +154,78 @@ void sensors_Init(void)
     .priority = (osPriority_t) osPriorityNormal,
   };
   calcECTaskHandle = osThreadNew(calcEC, NULL, &calcECTask_attributes);
+  
+  /* definition and creation of calibratePHTask */
+  const osThreadAttr_t calibratePHTask_attributes = {
+    .name = "calibratePHTask",
+    .stack_mem = &calibratePHTaskBuffer[0],
+    .stack_size = sizeof(calibratePHTaskBuffer),
+    .cb_mem = &calibratePHTaskControlBlock,
+    .cb_size = sizeof(calibratePHTaskControlBlock),
+    .priority = (osPriority_t) osPriorityNormal,
+  };
+  calibratePHTaskHandle = osThreadNew(calibratePH, NULL, &calibratePHTask_attributes);
+
+  /* definition and creation of calibrateECTask */
+  const osThreadAttr_t calibrateECTask_attributes = {
+    .name = "calibrateECTask",
+    .stack_mem = &calibrateECTaskBuffer[0],
+    .stack_size = sizeof(calibrateECTaskBuffer),
+    .cb_mem = &calibrateECTaskControlBlock,
+    .cb_size = sizeof(calibrateECTaskControlBlock),
+    .priority = (osPriority_t) osPriorityNormal,
+  };
+  calibrateECTaskHandle = osThreadNew(calibrateEC, NULL, &calibrateECTask_attributes);
 }
 
 /* 
  * ===  FUNCTION  ======================================================================
- *         Name:  calibrate_pH
+ *         Name:  readStoredCalibration
  *  Description:  
  * =====================================================================================
  */
-void calibrate_pH (void)
+void readStoredCalibration ( <+argument_list+> )
 {
-    return ;
-}		/* -----  end of function calibrate_pH  ----- */
+    EEErr_t eeerr = EE_OK;
+    eeerr = EE_ReadFloat(EE_I2C_ADDR, PH_SLOPE_EE_ADDR, &pH_slope, 1); 
+    eeerr = EE_ReadFloat(EE_I2C_ADDR, PH_INTCPT_EE_ADDR, &pH_intercept, 1); 
+    eeerr = EE_ReadFloat(EE_I2C_ADDR, EC_SLOPE_EE_ADDR, &EC_slope, 1); 
+    eeerr = EE_ReadFloat(EE_I2C_ADDR, EC_INTCPT_EE_ADDR, &EC_intercept, 1); 
+}		/* -----  end of function readStoredCalibration  ----- */
+
+/* 
+ * ===  FUNCTION  ======================================================================
+ *         Name:  calibratePH
+ *  Description:  
+ * =====================================================================================
+ */
+static void calibratePH (void *argument)
+{
+    for (;;)
+    {
+        osEventFlagsWait( sens_evt_id, SENSORS_FLAG_PH_CALIB_BEGIN, 
+                          osFlagsWaitAll, osWaitForever);
+
+
+    }
+}		/* -----  end of function calibratePH  ----- */
+
+/* 
+ * ===  FUNCTION  ======================================================================
+ *         Name:  calibrateEC
+ *  Description:  
+ * =====================================================================================
+ */
+static void calibrateEC (void *argument)
+{
+    for (;;)
+    {
+        osEventFlagsWait( sens_evt_id, SENSORS_FLAG_EC_CALIB_BEGIN, 
+                          osFlagsWaitAll, osWaitForever);
+
+
+    }
+}		/* -----  end of function calibrateEC  ----- */
 
 /* 
  * ===  FUNCTION  ======================================================================
@@ -160,7 +233,7 @@ void calibrate_pH (void)
  *  Description:  
  * =====================================================================================
  */
-void calcT(void *argument)
+static void calcT(void *argument)
 {
     for (;;)
     {
@@ -176,7 +249,7 @@ void calcT(void *argument)
  *  Description:  
  * =====================================================================================
  */
-void calcPH(void *argument)
+static void calcPH(void *argument)
 {
     for (;;)
     {
@@ -193,7 +266,7 @@ void calcPH(void *argument)
  *  Description:  
  * =====================================================================================
  */
-void calcEC(void *argument)
+static void calcEC(void *argument)
 {
     for (;;)
     {
@@ -210,7 +283,7 @@ void calcEC(void *argument)
 * @param argument: Not used
 * @retval None
 */
-void readADC(void *argument)
+static void readADC(void *argument)
 {
   /* Infinite loop */
   uint16_t uhADCxConvertedData[ADC_BUFFERSIZE];
