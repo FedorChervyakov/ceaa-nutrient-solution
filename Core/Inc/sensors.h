@@ -32,20 +32,23 @@ float getpH(void);
 float getEC(void);
 float getTemperature(void);
 
-/*-----------------------------------------------------------------------------
+/*---------------------------------------------------------------------
  *  Private defines
  *-----------------------------------------------------------------------------*/
 #define SENSORS_FLAG_TEMPERATURE_READY  ((uint32_t) 0x0001)
 #define SENSORS_FLAG_PH_READY           ((uint32_t) 0x0010)
 #define SENSORS_FLAG_EC_READY           ((uint32_t) 0x0100)
-#define SENSORS_FLAG_ADC_READY		    ((uint32_t) 0x1000)
+#define SENSORS_FLAG_ADC_READY		((uint32_t) 0x1000)
 
 #define SENSORS_FLAG_PH_CALIB_BEGIN     ((uint32_t) 0x0002) 
-#define SENSORS_FLAG_EC_CALIB_BEGIN     ((uint32_t) 0x0020) 
 
-#define PH_SLOPE_EE_ADDR                ((uint16_t) 0x1000)
-#define PH_INTCPT_EE_ADDR               ((uint16_t) 0x1004)
-#define EC_SLOPE_EE_ADDR                ((uint16_t) 0x1008)
-#define EC_INTCPT_EE_ADDR               ((uint16_t) 0x100C)
+#define PH_SLOPE_EE_ADDR                ((uint16_t) 0x1010)
+#define PH_INTCPT_EE_ADDR               ((uint16_t) 0x1020)
+#define EC_SLOPE_EE_ADDR                ((uint16_t) 0x1030)
+#define EC_INTCPT_EE_ADDR               ((uint16_t) 0x1040)
+
+#define SENSORS_OK			((int8_t) 0)
+#define SENSORS_CAL_READ_FAIL		((int8_t) -1)
+#define SENSORS_CAL_WRITE_FAIL		((int8_t) -2)
 
 #endif /* __SENSORS_H_ */

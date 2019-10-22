@@ -21,6 +21,8 @@
 #include "stm32wbxx_hal.h"
 #include "24xx256.h"
 
+extern ADC_HandleTypeDef hadc1;
+
 /*-----------------------------------------------------------------------------
  *  Private defines
  *-----------------------------------------------------------------------------*/
@@ -52,8 +54,6 @@
 /*-----------------------------------------------------------------------------
  *  Private variables
  *-----------------------------------------------------------------------------*/
-extern ADC_HandleTypeDef hadc1;
-
 typedef StaticTask_t osStaticThreadDef_t;
 osThreadId_t calcTTaskHandle;
 uint32_t calcTTaskBuffer[ 128 ];
@@ -93,6 +93,7 @@ static float EC_intercept;
 /*-----------------------------------------------------------------------------
  *  Private function prototypes
  *-----------------------------------------------------------------------------*/
+int8_t readStoredCalibration(void);
 static void calcT(void *argument);
 static void calcPH(void *argument);
 static void calcEC(void *argument);
@@ -110,6 +111,8 @@ void sensors_Init(void)
 {
   /* definition and creation of sensors' eventFlags */
   sens_evt_id = osEventFlagsNew(NULL);
+
+  readStoredCalibration();
 
   /* definition and creation of readADCTask */
   const osThreadAttr_t readADCTask_attributes = {
@@ -184,13 +187,35 @@ void sensors_Init(void)
  *  Description:  
  * =====================================================================================
  */
-void readStoredCalibration ( <+argument_list+> )
+int8_t readStoredCalibration ( void )
 {
     EEErr_t eeerr = EE_OK;
+
     eeerr = EE_ReadFloat(EE_I2C_ADDR, PH_SLOPE_EE_ADDR, &pH_slope, 1); 
+    if (eeerr != EE_OK)
+    {
+        return SENSORS_CAL_READ_FAIL;
+    }
+
     eeerr = EE_ReadFloat(EE_I2C_ADDR, PH_INTCPT_EE_ADDR, &pH_intercept, 1); 
+    if (eeerr != EE_OK)
+    {
+        return SENSORS_CAL_READ_FAIL;
+    }
+
     eeerr = EE_ReadFloat(EE_I2C_ADDR, EC_SLOPE_EE_ADDR, &EC_slope, 1); 
+    if (eeerr != EE_OK)
+    {
+        return SENSORS_CAL_READ_FAIL;
+    }
+
     eeerr = EE_ReadFloat(EE_I2C_ADDR, EC_INTCPT_EE_ADDR, &EC_intercept, 1); 
+    if (eeerr != EE_OK)
+    {
+        return SENSORS_CAL_READ_FAIL;
+    }
+
+    return SENSORS_OK;
 }		/* -----  end of function readStoredCalibration  ----- */
 
 /* 
