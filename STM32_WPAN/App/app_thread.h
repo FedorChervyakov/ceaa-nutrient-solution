@@ -85,11 +85,18 @@ typedef enum
   ERR_THREAD_LINK_MODE,
   ERR_TIMER_INIT,
   ERR_TIMER_START,
+  ERR_JOINER_START,
+  ERR_JOINER_STOP,
+  ERR_THREAD_JOINER_CB,
+  ERR_THREAD_DISABLE,
+  ERR_THREAD_STORE_DATA,
 /* USER CODE END ERROR_APPLI_ENUM */
   ERR_THREAD_CHECK_WIRELESS
   } ErrAppliIdEnum_t;
 /* USER CODE BEGIN ET */
-
+#define JOIN_TASK_FLAG_BEGIN        ((uint32_t) 0x1U)
+#define JOIN_TASK_FLAG_JOIN_SUCCESS ((uint32_t) 0x2U)
+#define JOIN_TASK_FLAG_JOIN_FAIL    ((uint32_t) 0x3U)
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/

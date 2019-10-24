@@ -60,6 +60,7 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define B1_Pin GPIO_PIN_4
 #define B1_GPIO_Port GPIOC
+#define B1_EXTI_IRQn EXTI4_IRQn
 #define LD2_Pin GPIO_PIN_0
 #define LD2_GPIO_Port GPIOB
 #define LD3_Pin GPIO_PIN_1
@@ -70,8 +71,10 @@ void Error_Handler(void);
 #define JTCK_GPIO_Port GPIOA
 #define B2_Pin GPIO_PIN_0
 #define B2_GPIO_Port GPIOD
+#define B2_EXTI_IRQn EXTI0_IRQn
 #define B3_Pin GPIO_PIN_1
 #define B3_GPIO_Port GPIOD
+#define B3_EXTI_IRQn EXTI1_IRQn
 #define JTDO_Pin GPIO_PIN_3
 #define JTDO_GPIO_Port GPIOB
 #define LD1_Pin GPIO_PIN_5
@@ -81,7 +84,10 @@ void Error_Handler(void);
 #define STLINK_TX_Pin GPIO_PIN_7
 #define STLINK_TX_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
-
+#define MAIN_FLAG_I2C_TX_CPLT   ((uint32_t) 0x01)
+#define MAIN_FLAG_I2C_RX_CPLT   ((uint32_t) 0x10)
+#define EE_FLAG_I2C_READ_CPLT   ((uint32_t) 0x20)
+#define EE_FLAG_I2C_WRITE_CPLT  ((uint32_t) 0x21)
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

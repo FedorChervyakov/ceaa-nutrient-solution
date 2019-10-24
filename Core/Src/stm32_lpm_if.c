@@ -153,6 +153,7 @@ static void Switch_On_HSI( void )
   LL_RCC_HSI_Enable( );
   while(!LL_RCC_HSI_IsReady( ));
   LL_RCC_SetSysClkSource( LL_RCC_SYS_CLKSOURCE_HSI );
+  LL_RCC_SetSMPSClockSource(LL_RCC_SMPS_CLKSOURCE_HSI);
   while (LL_RCC_GetSysClkSource( ) != LL_RCC_SYS_CLKSOURCE_STATUS_HSI);
 }
 

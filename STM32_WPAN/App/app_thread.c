@@ -38,12 +38,16 @@
 
 /* Private includes -----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "stm32wbxx_hal.h"
+#include "main.h"
+#include "sensors.h"
+#include "24xx256.h"
+#include "sw_led.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+extern osEventFlagsId_t sw_evt_id;
 /* USER CODE END PTD */
 
 /* Private defines -----------------------------------------------------------*/
@@ -73,6 +77,17 @@ const osThreadAttr_t ThreadCliProcess_attr = {
  };
 
 /* USER CODE BEGIN PD */
+const osThreadAttr_t JoinerProcess_attr = {
+     .name = CFG_JOINER_PROCESS_NAME,
+     .priority = CFG_JOINER_PROCESS_PRIORITY,
+     .stack_size = CFG_JOINER_PROCESS_STACk_SIZE
+};
+
+
+#define C_RESOURCE_PH               "ph"
+#define C_RESOURCE_EC               "ec"
+#define C_RESOURCE_TEMP             "temp"
+#define C_PASSWORD                  "AllBytesWrong"
 
 /* USER CODE END PD */
 
@@ -86,7 +101,9 @@ static void APP_THREAD_CheckWirelessFirmwareInfo(void);
 static void APP_THREAD_DeviceConfig(void);
 static void APP_THREAD_StateNotif(uint32_t NotifFlags, void *pContext);
 static void APP_THREAD_TraceError(const char * pMess, uint32_t ErrCode);
+#if (CFG_FULL_LOW_POWER == 0)
 static void Send_CLI_To_M0(void);
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 static void Send_CLI_Ack_For_OT(void);
 static void HostTxCb( void );
 static void Wait_Getting_Ack_From_M0(void);
@@ -101,15 +118,52 @@ extern void MX_USART1_UART_Init(void);
 #if (CFG_USB_INTERFACE_ENABLE != 0)
 static uint32_t ProcessCmdString(uint8_t* buf , uint32_t len);
 #else
+#if (CFG_FULL_LOW_POWER == 0)
 static void RxCpltCallback(void);
-#endif
+#endif /* (CFG_FULL_LOW_POWER == 0) */
+#endif /* (CFG_USB_INTERFACE_ENABLE != 0) */
 
 /* FreeRTos wrapper functions */
 static void APP_THREAD_FreeRTOSProcessMsgM0ToM4Task(void *argument);
+#if (CFG_FULL_LOW_POWER == 0)
 static void APP_THREAD_FreeRTOSSendCLIToM0Task(void *argument);
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 
 /* USER CODE BEGIN PFP */
+static void APP_THREAD_JoinerProcess(void *argument);
 
+static void APP_THREAD_JoinerHandler(otError OtError, void *pContext);
+
+static void APP_THREAD_ph_ReqHandler(otCoapHeader   * pHeader,
+                            otMessage               * pMessage,
+                            const otMessageInfo     * pMessageInfo);
+static otError APP_THREAD_ph_RespSend(otCoapHeader  * pRequestHeader,
+                            const otMessageInfo     * pMessageInfo);
+
+static void APP_THREAD_ec_ReqHandler(otCoapHeader   * pHeader,
+                            otMessage               * pMessage,
+                            const otMessageInfo     * pMessageInfo);
+static otError APP_THREAD_ec_RespSend(otCoapHeader  * pRequestHeader,
+                            const otMessageInfo     * pMessageInfo);
+
+static void APP_THREAD_temp_ReqHandler(otCoapHeader   * pHeader,
+                            otMessage               * pMessage,
+                            const otMessageInfo     * pMessageInfo);
+static otError APP_THREAD_temp_RespSend(otCoapHeader  * pRequestHeader,
+                            const otMessageInfo     * pMessageInfo);							
+
+static otError APP_THREAD_MethodNotAllowed_RespSend(otCoapHeader  * pRequestHeader,
+                            const otMessageInfo     * pMessageInfo);
+
+static void APP_THREAD_DummyReqHandler(void    * p_context,
+                            otCoapHeader        * pHeader,
+                            otMessage           * pMessage,
+                            const otMessageInfo * pMessageInfo);
+static void APP_THREAD_DummyRespHandler(void    * p_context,
+                            otCoapHeader        * pHeader,
+                            otMessage           * pMessage,
+                            const otMessageInfo * pMessageInfo,
+                            otError             Result);
 /* USER CODE END PFP */
 
 /* Private variables -----------------------------------------------*/
@@ -118,10 +172,14 @@ static uint8_t TmpString[C_SIZE_CMD_STRING];
 static uint8_t VcpRxBuffer[sizeof(TL_CmdSerial_t)];        /* Received Data over USB are stored in this buffer */
 static uint8_t VcpTxBuffer[sizeof(TL_EvtPacket_t) + 254U]; /* Transmit buffer over USB */
 #else
+#if (CFG_FULL_LOW_POWER == 0)
 static uint8_t aRxBuffer[C_SIZE_CMD_STRING];
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 #endif /* (CFG_USB_INTERFACE_ENABLE != 0) */
 
+#if (CFG_FULL_LOW_POWER == 0)
 static uint8_t CommandString[C_SIZE_CMD_STRING];
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 static __IO uint16_t indexReceiveChar = 0;
 static __IO uint16_t CptReceiveCmdFromUser = 0;
 
@@ -136,10 +194,28 @@ PLACE_IN_SECTION("MB_MEM2") ALIGN(4) static uint8_t ThreadNotifRspEvtBuffer[size
 PLACE_IN_SECTION("MB_MEM2") ALIGN(4) static TL_CmdPacket_t ThreadCliCmdBuffer;
 
 static osThreadId_t OsTaskMsgM0ToM4Id;      /* Task managing the M0 to M4 messaging        */
+#if (CFG_FULL_LOW_POWER == 0)
 static osThreadId_t OsTaskCliId;            /* Task used to manage CLI comamnd             */
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 
 /* USER CODE BEGIN PV */
+osThreadId_t JoinerTaskId;           /* Task used manage joining a Thread network   */
 
+static otCoapResource OT_Resource_ph = {C_RESOURCE_PH,
+                            APP_THREAD_DummyReqHandler,
+                            (void*) APP_THREAD_ph_ReqHandler,
+                            NULL};
+static otCoapResource OT_Resource_ec = {C_RESOURCE_EC,
+                            APP_THREAD_DummyReqHandler,
+                            (void*) APP_THREAD_ec_ReqHandler,
+                            NULL};
+static otCoapResource OT_Resource_temp = {C_RESOURCE_TEMP,
+                            APP_THREAD_DummyReqHandler,
+                            (void*) APP_THREAD_temp_ReqHandler,
+                            NULL};
+
+static otCoapHeader  OT_Header = {0};
+static otMessage   * pOT_Message = NULL;
 /* USER CODE END PV */
 
 /* Functions Definition ------------------------------------------------------*/
@@ -171,7 +247,7 @@ void APP_THREAD_Init( void )
   APP_THREAD_TL_THREAD_INIT();
 
   /* Configure UART for sending CLI command from M4 */
-  APP_THREAD_Init_UART_CLI();
+//  APP_THREAD_Init_UART_CLI();
 
   /* Send Thread start system cmd to M0 */
   ThreadInitStatus = SHCI_C2_THREAD_Init();
@@ -187,15 +263,19 @@ void APP_THREAD_Init( void )
   OsTaskMsgM0ToM4Id = osThreadNew(APP_THREAD_FreeRTOSProcessMsgM0ToM4Task, NULL,&ThreadMsgM0ToM4Process_attr);
 
   /* USER CODE BEGIN APP_THREAD_INIT_FREERTOS */
-
+  JoinerTaskId = osThreadNew(APP_THREAD_JoinerProcess, NULL, &JoinerProcess_attr);
+  if (JoinerTaskId == NULL) 
+  {
+      Error_Handler();
+  }
   /* USER CODE END APP_THREAD_INIT_FREERTOS */
 
   /* Configure the Thread device at start */
   APP_THREAD_DeviceConfig();
 
- /* USER CODE BEGIN APP_THREAD_INIT_2 */
+  /* USER CODE BEGIN APP_THREAD_INIT_2 */
 
- /* USER CODE END APP_THREAD_INIT_2 */
+  /* USER CODE END APP_THREAD_INIT_2 */
 }
 
 /**
@@ -217,7 +297,7 @@ void APP_THREAD_Error(uint32_t ErrId, uint32_t ErrCode)
   case ERR_THREAD_SET_STATE_CB :
     APP_THREAD_TraceError("ERROR : ERR_THREAD_SET_STATE_CB ",ErrCode);
     break;
-   case ERR_THREAD_SET_CHANNEL :
+  case ERR_THREAD_SET_CHANNEL :
     APP_THREAD_TraceError("ERROR : ERR_THREAD_SET_CHANNEL ",ErrCode);
     break;
   case ERR_THREAD_SET_PANID :
@@ -267,7 +347,7 @@ void APP_THREAD_Error(uint32_t ErrId, uint32_t ErrCode)
   default :
     APP_THREAD_TraceError("ERROR Unknown ", 0);
     break;
-    }
+  }
 }
 
 /*************************************************************
@@ -284,11 +364,11 @@ void APP_THREAD_Error(uint32_t ErrId, uint32_t ErrCode)
 static void APP_THREAD_DeviceConfig(void)
 {
   otError error;
-  error = otInstanceErasePersistentInfo(NULL);
-  if (error != OT_ERROR_NONE)
-  {
-    APP_THREAD_Error(ERR_THREAD_ERASE_PERSISTENT_INFO,error);
-  }
+//  error = otInstanceErasePersistentInfo(NULL);
+//  if (error != OT_ERROR_NONE)
+//  {
+//    APP_THREAD_Error(ERR_THREAD_ERASE_PERSISTENT_INFO,error);
+//  }
   otInstanceFinalize(NULL);
   otInstanceInitSingle();
   error = otSetStateChangedCallback(NULL, APP_THREAD_StateNotif, NULL);
@@ -330,6 +410,18 @@ static void APP_THREAD_DeviceConfig(void)
   {
     APP_THREAD_Error(ERR_THREAD_COAP_ADD_RESSOURCE,error);
   }
+  /* Add ec CoAP resource */
+  error = otCoapAddResource(NULL, &OT_Resource_ec);
+  if (error != OT_ERROR_NONE)
+  {
+    APP_THREAD_Error(ERR_THREAD_COAP_ADD_RESSOURCE,error);
+  }
+  /* Add temperature CoAP resource */
+  error = otCoapAddResource(NULL, &OT_Resource_temp);
+  if (error != OT_ERROR_NONE)
+  {
+    APP_THREAD_Error(ERR_THREAD_COAP_ADD_RESSOURCE,error);
+  }
 
   /* USER CODE END DEVICECONFIG */
 }
@@ -356,38 +448,38 @@ static void APP_THREAD_StateNotif(uint32_t NotifFlags, void *pContext)
     {
     case OT_DEVICE_ROLE_DISABLED:
       /* USER CODE BEGIN OT_DEVICE_ROLE_DISABLED */
-      HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-      HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
+      LED_Green(OFF);
+      LED_Red(OFF);
       /* USER CODE END OT_DEVICE_ROLE_DISABLED */
       break;
     case OT_DEVICE_ROLE_DETACHED:
       /* USER CODE BEGIN OT_DEVICE_ROLE_DETACHED */
-      HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-      HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
+      LED_Green(OFF);
+      LED_Red(OFF);
       /* USER CODE END OT_DEVICE_ROLE_DETACHED */
       break;
     case OT_DEVICE_ROLE_CHILD:
       /* USER CODE BEGIN OT_DEVICE_ROLE_CHILD */
-      HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-      HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
+      LED_Green(OFF);
+      LED_Red(ON);
       /* USER CODE END OT_DEVICE_ROLE_CHILD */
       break;
     case OT_DEVICE_ROLE_ROUTER :
       /* USER CODE BEGIN OT_DEVICE_ROLE_ROUTER */
-      HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
-      HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
+      LED_Green(ON);
+      LED_Red(ON);
       /* USER CODE END OT_DEVICE_ROLE_ROUTER */
       break;
     case OT_DEVICE_ROLE_LEADER :
       /* USER CODE BEGIN OT_DEVICE_ROLE_LEADER */
-      HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
-      HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
+      LED_Green(ON);
+      LED_Red(OFF);
       /* USER CODE END OT_DEVICE_ROLE_LEADER */
       break;
     default:
       /* USER CODE BEGIN DEFAULT */
-      HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-      HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
+      LED_Green(OFF);
+      LED_Red(OFF);
       /* USER CODE END DEFAULT */
       break;
     }
@@ -406,15 +498,7 @@ static void APP_THREAD_TraceError(const char * pMess, uint32_t ErrCode)
 {
   /* USER CODE BEGIN TRACE_ERROR */
   /* Toggle leds to inidicate Thread errror */
-  for(;;)
-  {
-      HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
-      HAL_Delay(250);
-      HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-      HAL_Delay(250);
-      HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
-      HAL_Delay(250);
-  }
+  LED_Red(FAST_TOGGLING);
   /* USER CODE END TRACE_ERROR */
 }
 
@@ -481,6 +565,7 @@ static void APP_THREAD_FreeRTOSProcessMsgM0ToM4Task(void *argument)
   }
 }
 
+#if (CFG_FULL_LOW_POWER == 0)
 static void APP_THREAD_FreeRTOSSendCLIToM0Task(void *argument)
 {
   UNUSED(argument);
@@ -496,12 +581,140 @@ static void APP_THREAD_FreeRTOSSendCLIToM0Task(void *argument)
     /* USER END END APP_THREAD_FREERTOS_SEND_CLI_TO_M0_2 */
   }
 }
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 
 /* USER CODE BEGIN FREERTOS_WRAPPER_FUNCTIONS */
+static void APP_THREAD_JoinerProcess(void *argument)
+{
+  UNUSED(argument);
+  otError error;
+
+  osThreadFlagsClear( JOIN_TASK_FLAG_BEGIN );
+  for(;;)
+  {
+
+      uint32_t t_flags = 0;
+      osEventFlagsWait( sw_evt_id, BT3_VERY_LONG_PRESS,
+                        osFlagsWaitAll, osWaitForever);
+
+      LED_Red(OFF);
+      LED_Blue(OFF);
+      LED_Green(OFF);
+
+      if (otIp6IsEnabled(NULL))
+      {
+        otIp6SetEnabled(NULL, false);
+      }
+
+      error = otInstanceErasePersistentInfo(NULL);
+      if (error != OT_ERROR_NONE)
+      {
+        APP_THREAD_Error(ERR_THREAD_ERASE_PERSISTENT_INFO,error);
+      }
+
+      otInstanceFinalize(NULL);
+
+      otInstanceInitSingle();
+      error = otSetStateChangedCallback(NULL, APP_THREAD_StateNotif, NULL);
+      if (error != OT_ERROR_NONE)
+      {
+        APP_THREAD_Error(ERR_THREAD_SET_STATE_CB,error);
+      }
+
+      LED_Blue(FAST_TOGGLING);
+
+      error = otIp6SetEnabled(NULL, true);
+      if (error != OT_ERROR_NONE)
+      {
+        APP_THREAD_Error(ERR_THREAD_IPV6_ENABLE, error);
+      }
+
+      /* Start the joiner */
+      error = otJoinerStart(NULL,
+          C_PASSWORD,
+          NULL,
+          "OT", /* PACKAGE_NAME */
+          "TestAppli",/* OPENTHREAD_CONFIG_PLATFORM_INFO */
+          "NA", /* PACKAGE_VERSION */
+          NULL, APP_THREAD_JoinerHandler, NULL);
+
+      if (error != OT_ERROR_NONE)
+      {
+        APP_THREAD_Error(ERR_JOINER_START, error);
+      }
+          
+      osThreadFlagsClear( JOIN_TASK_FLAG_BEGIN );
+  }
+}
 
 /* USER CODE END FREERTOS_WRAPPER_FUNCTIONS */
 
 /* USER CODE BEGIN FD_LOCAL_FUNCTIONS */
+
+/**
+ * @brief Dummy request handler
+ * @param
+ * @retval None
+ */
+static void APP_THREAD_JoinerHandler(otError OtError, void *pContext)
+{
+  otError error;
+  otJoinerState joiner_state;
+  SHCI_CmdStatus_t shci_status;
+
+  if (OtError == OT_ERROR_NONE)
+  {
+    error = otThreadSetEnabled(NULL, true);
+    if (error != OT_ERROR_NONE)
+    {
+        APP_THREAD_Error(ERR_THREAD_START, error);
+    }
+    
+    LED_Blue(SLOW_TOGGLING);
+
+    osDelay(20000);
+
+//    joiner_state = otJoinerGetState(NULL);
+//    if (joiner_state != OT_JOINER_STATE_JOINED)
+//    {
+//        HAL_GPIO_WritePin(LD1_GPIO_Port, LD1_Pin, GPIO_PIN_SET);
+//    }
+    error = otThreadSetEnabled(NULL, false);
+
+    if (error != OT_ERROR_NONE)
+    {
+        APP_THREAD_Error(ERR_THREAD_DISABLE, error);
+    }
+    
+    if (otIp6IsEnabled(NULL))
+    {
+        error = otIp6SetEnabled(NULL, false);
+        if (error != OT_ERROR_NONE)
+        {
+            APP_THREAD_Error(ERR_THREAD_DISABLE, error);
+        }
+    }
+
+//    otInstanceFinalize(NULL);
+
+    shci_status = SHCI_C2_FLASH_StoreData(THREAD_IP);
+    if (shci_status != SHCI_Success)
+    {
+        APP_THREAD_Error(ERR_THREAD_STORE_DATA, shci_status);
+    }
+
+    osDelay(1000);
+    APP_THREAD_DeviceConfig();
+
+  }
+  else
+  {
+      APP_THREAD_Error(ERR_THREAD_JOINER_CB, OtError);
+  }
+
+  LED_Blue(OFF);
+}
+
 /**
  * @brief This function is used to handle the pH requests
  *
@@ -547,6 +760,8 @@ static otError APP_THREAD_ph_RespSend(otCoapHeader  * pRequestHeader,
                             const otMessageInfo     * pMessageInfo)
 {
     otError error = OT_ERROR_NONE;
+    float ph = 0;
+    char  str_ptr[10];
     do
     {
         otCoapHeaderInit(&OT_Header, OT_COAP_TYPE_ACKNOWLEDGMENT, OT_COAP_CODE_CONTENT);
@@ -563,8 +778,184 @@ static otError APP_THREAD_ph_RespSend(otCoapHeader  * pRequestHeader,
         {
             APP_THREAD_Error(ERR_NEW_MSG_ALLOC,error);
         }
+        
+        ph = getpH();
+        gcvt(ph, 5, str_ptr);
 
-        char * str_ptr = ADC_ChannelGet_str(1);
+        error = otMessageAppend(pOT_Message, (void *) str_ptr, sizeof(char)*strlen(str_ptr));
+        if (error != OT_ERROR_NONE)
+        {
+            APP_THREAD_Error(ERR_THREAD_COAP_APPEND,error);
+            break;
+        }
+
+        error = otCoapSendResponse(NULL, pOT_Message, pMessageInfo);
+        if (error != OT_ERROR_NONE && pOT_Message != NULL)
+        {
+            otMessageFree(pOT_Message);
+            APP_THREAD_Error(ERR_THREAD_COAP_SEND_RESPONSE,error);
+        }
+
+
+    } while (false);
+
+    return error;
+}
+
+/**
+ * @brief This function is used to handle the EC requests
+ *
+ * @param pHeader header pointer
+ * @param pMessage message pointer
+ * @param pMessageInfo message info pointer
+ * @retval None
+ */
+static void APP_THREAD_ec_ReqHandler(otCoapHeader   * pHeader,
+                            otMessage               * pMessage,
+                            const otMessageInfo     * pMessageInfo)
+{
+    do
+    {
+        if (otCoapHeaderGetType(pHeader) == OT_COAP_TYPE_CONFIRMABLE &&
+            otCoapHeaderGetCode(pHeader) == OT_COAP_CODE_GET)
+        {
+            if (APP_THREAD_ec_RespSend(pHeader, pMessageInfo) != OT_ERROR_NONE)
+            {
+                APP_THREAD_Error(ERR_THREAD_COAP_SEND_RESPONSE, 0);
+            }
+        }
+        else
+        {
+            if (APP_THREAD_MethodNotAllowed_RespSend(pHeader, pMessageInfo) != OT_ERROR_NONE)
+            {
+                APP_THREAD_Error(ERR_THREAD_COAP_SEND_RESPONSE, 0);
+            }
+        }
+    } 
+    while (false);
+}
+
+/**
+ * @brief This function is used to send the EC response
+ *
+ * @param pHeader header pointer
+ * @param pMessage message pointer
+ * @param pMessageInfo message info pointer
+ * @retval None
+ */
+static otError APP_THREAD_ec_RespSend(otCoapHeader  * pRequestHeader,
+                            const otMessageInfo     * pMessageInfo)
+{
+    otError error = OT_ERROR_NONE;
+    float ec = 0;
+    char  str_ptr[10];
+    do
+    {
+        otCoapHeaderInit(&OT_Header, OT_COAP_TYPE_ACKNOWLEDGMENT, OT_COAP_CODE_CONTENT);
+        otCoapHeaderSetMessageId(&OT_Header, otCoapHeaderGetMessageId(pRequestHeader));
+        otCoapHeaderSetToken(&OT_Header,
+                            otCoapHeaderGetToken(pRequestHeader),
+                            otCoapHeaderGetTokenLength(pRequestHeader));
+        otCoapHeaderAppendContentFormatOption(&OT_Header,
+                            OT_COAP_OPTION_CONTENT_FORMAT_TEXT_PLAIN);
+        otCoapHeaderSetPayloadMarker(&OT_Header);
+
+        pOT_Message = otCoapNewMessage(NULL, &OT_Header);
+        if (pOT_Message == NULL)
+        {
+            APP_THREAD_Error(ERR_NEW_MSG_ALLOC,error);
+        }
+        
+        ec = getEC();
+        gcvt(ec, 5, str_ptr);
+
+        error = otMessageAppend(pOT_Message, (void *) str_ptr, sizeof(char)*strlen(str_ptr));
+        if (error != OT_ERROR_NONE)
+        {
+            APP_THREAD_Error(ERR_THREAD_COAP_APPEND,error);
+            break;
+        }
+
+        error = otCoapSendResponse(NULL, pOT_Message, pMessageInfo);
+        if (error != OT_ERROR_NONE && pOT_Message != NULL)
+        {
+            otMessageFree(pOT_Message);
+            APP_THREAD_Error(ERR_THREAD_COAP_SEND_RESPONSE,error);
+        }
+
+
+    } while (false);
+
+    return error;
+}
+
+/**
+ * @brief This function is used to handle the temperature requests
+ *
+ * @param pHeader header pointer
+ * @param pMessage message pointer
+ * @param pMessageInfo message info pointer
+ * @retval None
+ */
+static void APP_THREAD_temp_ReqHandler(otCoapHeader   * pHeader,
+                            otMessage               * pMessage,
+                            const otMessageInfo     * pMessageInfo)
+{
+    do
+    {
+        if (otCoapHeaderGetType(pHeader) == OT_COAP_TYPE_CONFIRMABLE &&
+            otCoapHeaderGetCode(pHeader) == OT_COAP_CODE_GET)
+        {
+            if (APP_THREAD_temp_RespSend(pHeader, pMessageInfo) != OT_ERROR_NONE)
+            {
+                APP_THREAD_Error(ERR_THREAD_COAP_SEND_RESPONSE, 0);
+            }
+        }
+        else
+        {
+            if (APP_THREAD_MethodNotAllowed_RespSend(pHeader, pMessageInfo) != OT_ERROR_NONE)
+            {
+                APP_THREAD_Error(ERR_THREAD_COAP_SEND_RESPONSE, 0);
+            }
+        }
+    } 
+    while (false);
+}
+
+/**
+ * @brief This function is used to send the temperature response
+ *
+ * @param pHeader header pointer
+ * @param pMessage message pointer
+ * @param pMessageInfo message info pointer
+ * @retval None
+ */
+static otError APP_THREAD_temp_RespSend(otCoapHeader  * pRequestHeader,
+                            const otMessageInfo     * pMessageInfo)
+{
+    otError error = OT_ERROR_NONE;
+    float temp = 0;
+    char str_ptr[10];
+    do
+    {
+        otCoapHeaderInit(&OT_Header, OT_COAP_TYPE_ACKNOWLEDGMENT, OT_COAP_CODE_CONTENT);
+        otCoapHeaderSetMessageId(&OT_Header, otCoapHeaderGetMessageId(pRequestHeader));
+        otCoapHeaderSetToken(&OT_Header,
+                            otCoapHeaderGetToken(pRequestHeader),
+                            otCoapHeaderGetTokenLength(pRequestHeader));
+        otCoapHeaderAppendContentFormatOption(&OT_Header,
+                            OT_COAP_OPTION_CONTENT_FORMAT_TEXT_PLAIN);
+        otCoapHeaderSetPayloadMarker(&OT_Header);
+
+        pOT_Message = otCoapNewMessage(NULL, &OT_Header);
+        if (pOT_Message == NULL)
+        {
+            APP_THREAD_Error(ERR_NEW_MSG_ALLOC,error);
+        }
+        
+        temp = getTemperature();
+        gcvt(temp, 5, str_ptr);
+
         error = otMessageAppend(pOT_Message, (void *) str_ptr, sizeof(char)*strlen(str_ptr));
         if (error != OT_ERROR_NONE)
         {
@@ -593,7 +984,7 @@ static otError APP_THREAD_ph_RespSend(otCoapHeader  * pRequestHeader,
  * @param pMessageInfo message info pointer
  * @retval None
  */
-otError APP_THREAD_MethodNotAllowed_RespSend(otCoapHeader  * pRequestHeader,
+static otError APP_THREAD_MethodNotAllowed_RespSend(otCoapHeader  * pRequestHeader,
                             const otMessageInfo     * pMessageInfo)
 {
     otError error = OT_ERROR_NONE;
@@ -758,10 +1149,10 @@ void Pre_OtCmdProcessing(void)
   */
 static void Wait_Getting_Ack_From_M0(void)
 {
-    while (FlagReceiveAckFromM0 == 0)
-   {
-   }
-   FlagReceiveAckFromM0 = 0;
+  while (FlagReceiveAckFromM0 == 0)
+  {
+  }
+  FlagReceiveAckFromM0 = 0;
 }
 
 /**
@@ -773,7 +1164,7 @@ static void Wait_Getting_Ack_From_M0(void)
   */
 static void Receive_Ack_From_M0(void)
 {
-    FlagReceiveAckFromM0 = 1;
+  FlagReceiveAckFromM0 = 1;
 }
 
 /**
@@ -790,6 +1181,7 @@ static void Receive_Notification_From_M0(void)
 
 #if (CFG_USB_INTERFACE_ENABLE != 0)
 #else
+#if (CFG_FULL_LOW_POWER == 0)
 static void RxCpltCallback(void)
 {
   /* Filling buffer and wait for '\r' char */
@@ -806,8 +1198,9 @@ static void RxCpltCallback(void)
   }
 
   /* Once a character has been sent, put back the device in reception mode */
-  HW_UART_Receive_IT(CFG_CLI_UART, aRxBuffer, 1U, RxCpltCallback);
+  //HW_UART_Receive_IT(CFG_CLI_UART, aRxBuffer, 1U, RxCpltCallback);
 }
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 #endif /* (CFG_USB_INTERFACE_ENABLE != 0) */
 
 #if (CFG_USB_INTERFACE_ENABLE != 0)
@@ -850,6 +1243,7 @@ static uint32_t  ProcessCmdString( uint8_t* buf , uint32_t len )
 }
 #endif/* (CFG_USB_INTERFACE_ENABLE != 0) */
 
+#if (CFG_FULL_LOW_POWER == 0)
 /**
  * @brief Process sends receive CLI command to M0.
  * @param  None
@@ -869,6 +1263,7 @@ static void Send_CLI_To_M0(void)
 
   TL_CLI_SendCmd();
 }
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 
 /**
  * @brief Send notification for CLI TL Channel.
@@ -889,11 +1284,15 @@ static void Send_CLI_Ack_For_OT(void)
  */
 void APP_THREAD_Init_UART_CLI(void)
 {
+#if (CFG_FULL_LOW_POWER == 0)
   OsTaskCliId = osThreadNew(APP_THREAD_FreeRTOSSendCLIToM0Task, NULL,&ThreadCliProcess_attr);
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 
-  #if (CFG_USB_INTERFACE_ENABLE != 0)
-  #else
-  HW_UART_Receive_IT(CFG_CLI_UART, aRxBuffer, 1, RxCpltCallback);
+#if (CFG_USB_INTERFACE_ENABLE != 0)
+#else
+#if (CFG_FULL_LOW_POWER == 0)
+  //HW_UART_Receive_IT(CFG_CLI_UART, aRxBuffer, 1, RxCpltCallback);
+#endif /* (CFG_FULL_LOW_POWER == 0) */
 #endif /* (CFG_USB_INTERFACE_ENABLE != 0) */
 }
 
@@ -929,7 +1328,7 @@ void TL_THREAD_CliNotReceived( TL_EvtPacket_t * Notbuffer )
 #if (CFG_USB_INTERFACE_ENABLE != 0)
     VCP_SendData( l_CliBuffer->cmdserial.cmd.payload, l_size, HostTxCb);
 #else
-    HW_UART_Transmit_IT(CFG_CLI_UART, l_CliBuffer->cmdserial.cmd.payload, l_size, HostTxCb);
+    //HW_UART_Transmit_IT(CFG_CLI_UART, l_CliBuffer->cmdserial.cmd.payload, l_size, HostTxCb);
 #endif /*USAGE_OF_VCP */
   }
   else

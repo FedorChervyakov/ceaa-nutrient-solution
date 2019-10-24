@@ -65,7 +65,7 @@ void PWR_ExitStopMode( void );
 void PWR_EnterSleepMode( void );
 
 /**
-  * @brief Enters Low Power Sleep Mode
+  * @brief Exits Low Power Sleep Mode
   * @note ARM exits the function when waking up
   * @param none
   * @retval none
