@@ -364,11 +364,11 @@ void APP_THREAD_Error(uint32_t ErrId, uint32_t ErrCode)
 static void APP_THREAD_DeviceConfig(void)
 {
   otError error;
-  error = otInstanceErasePersistentInfo(NULL);
-  if (error != OT_ERROR_NONE)
-  {
-    APP_THREAD_Error(ERR_THREAD_ERASE_PERSISTENT_INFO,error);
-  }
+//  error = otInstanceErasePersistentInfo(NULL);
+//  if (error != OT_ERROR_NONE)
+//  {
+//    APP_THREAD_Error(ERR_THREAD_ERASE_PERSISTENT_INFO,error);
+//  }
   otInstanceFinalize(NULL);
   otInstanceInitSingle();
   error = otSetStateChangedCallback(NULL, APP_THREAD_StateNotif, NULL);
@@ -606,13 +606,13 @@ static void APP_THREAD_JoinerProcess(void *argument)
         otIp6SetEnabled(NULL, false);
       }
 
-//      error = otInstanceErasePersistentInfo(NULL);
-//      if (error != OT_ERROR_NONE)
-//      {
-//        APP_THREAD_Error(ERR_THREAD_ERASE_PERSISTENT_INFO,error);
-//      }
-//
-////      otInstanceFinalize(NULL);
+      error = otInstanceErasePersistentInfo(NULL);
+      if (error != OT_ERROR_NONE)
+      {
+        APP_THREAD_Error(ERR_THREAD_ERASE_PERSISTENT_INFO,error);
+      }
+
+      otInstanceFinalize(NULL);
 
       otInstanceInitSingle();
       error = otSetStateChangedCallback(NULL, APP_THREAD_StateNotif, NULL);

@@ -24,7 +24,7 @@
  *  Defines
  *-----------------------------------------------------------------------------*/
 #define EE_I2C_ADDR            ((uint16_t) 0xA0)/* I2C address of the eeprom */
-#define EE_MEM_ADDR_SIZE       ((uint16_t) 8)   /* Size of internal memory address */
+#define EE_I2C_TIMEOUT         ((uint16_t) 2500) /* I2C_CPLT timeout in ms   */
 
 /*-----------------------------------------------------------------------------
  *  Status typedef
@@ -33,7 +33,8 @@ typedef enum
 {
     EE_OK,
     EE_ERR_READ,
-    EE_ERR_WRITE
+    EE_ERR_WRITE,
+    EE_ERR_I2C_TIMEOUT
 } EEErr_t;
 
 /*-----------------------------------------------------------------------------

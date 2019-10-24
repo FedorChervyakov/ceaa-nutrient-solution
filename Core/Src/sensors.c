@@ -36,7 +36,7 @@ extern osEventFlagsId_t sw_evt_id;
 #define DIGITAL_SCALE_12BITS    ((uint16_t) 0x0FFF)
 #define USER_TIMEOUT            ((uint32_t) 30000) /* 30 seconds */
 
-#define LM35_AMP_GAIN             ((float) 6.1)
+#define LM35_AMP_GAIN           ((float) 6.1)
 
 #define PH_CAL_SOLUTION_1       ((float) 7.0)   /* pH of a calibration solution 1 */
 #define PH_CAL_SOLUTION_2       ((float) 4.8)   /* pH of a calibration solution 2 */
@@ -350,8 +350,8 @@ static void calibratePH (void *argument)
 
         LED_Green(FAST_TOGGLING);
 
-        pH_slope = (PH_CAL_SOLUTION_1 - PH_CAL_SOLUTION_1) / (v_s1 - v_s2);
-        pH_intercept = (v_s1 * pH_slope) - PH_CAL_SOLUTION_1;
+        pH_slope = (PH_CAL_SOLUTION_1 - PH_CAL_SOLUTION_2) / (v_s1 - v_s2);
+        pH_intercept = PH_CAL_SOLUTION_1 - (v_s1 * pH_slope);
 
         if (storePHCalibration() != SENSORS_OK)
         {
@@ -399,11 +399,100 @@ static void calibratePH (void *argument)
  */
 static void calibrateEC (void *argument)
 {
+
+    float v_s1 = 0;
+    float v_s2 = 0;
+
     for (;;)
     {
         osEventFlagsWait( sw_evt_id, BT2_VERY_LONG_PRESS, 
                           osFlagsWaitAll, osWaitForever);
+    
+        v_s1 = 0;
+        v_s2 = 0;
 
+        LED_Blue(FAST_TOGGLING);
+
+        if (osEventFlagsWait( sw_evt_id, BT2_LONG_PRESS,
+                              osFlagsWaitAll, USER_TIMEOUT) == osErrorTimeout)
+        {
+            LED_Blue(OFF);
+            continue;
+        }
+        
+        LED_Blue(SLOW_TOGGLING);
+
+        osDelay(5000);
+
+        osThreadFlagsSet(readADCTaskHandle, ADC_BEGIN_FLAG);
+
+        osEventFlagsWait( sens_evt_id, SENSORS_FLAG_ADC_READY,
+                          osFlagsWaitAll, osWaitForever);
+
+        v_s1 = ch2_mv;
+
+        LED_Blue(FAST_TOGGLING);
+
+        if (osEventFlagsWait( sw_evt_id, BT2_LONG_PRESS,
+                              osFlagsWaitAll, USER_TIMEOUT) == osErrorTimeout)
+        {
+            LED_Blue(OFF);
+            continue;
+        }
+
+        LED_Blue(SLOW_TOGGLING);
+
+        osDelay(5000);
+
+        osThreadFlagsSet(readADCTaskHandle, ADC_BEGIN_FLAG);
+
+        osEventFlagsWait( sens_evt_id, SENSORS_FLAG_ADC_READY,
+                          osFlagsWaitAll, osWaitForever);
+
+        v_s2 = ch2_mv;
+
+        LED_Blue(OFF);
+
+        LED_Green(FAST_TOGGLING);
+
+        EC_slope = (EC_CAL_SOLUTION_1 - EC_CAL_SOLUTION_2) / (v_s1 - v_s2);
+        EC_intercept = EC_CAL_SOLUTION_1 - (v_s1 * EC_slope);
+
+        if (storeECCalibration() != SENSORS_OK)
+        {
+            LED_Green(OFF);
+
+            LED_Red(ON);    
+            osDelay(250);
+            LED_Red(OFF);    
+            osDelay(250);
+            LED_Red(ON);    
+            osDelay(250);
+            LED_Red(OFF);    
+            osDelay(250);
+            LED_Red(ON);    
+            osDelay(250);
+            LED_Red(OFF);    
+            osDelay(250);
+        }
+        else
+        {
+
+            LED_Green(OFF);
+
+            LED_Green(ON);    
+            osDelay(250);
+            LED_Green(OFF);    
+            osDelay(250);
+            LED_Green(ON);    
+            osDelay(250);
+            LED_Green(OFF);    
+            osDelay(250);
+            LED_Green(ON);    
+            osDelay(250);
+            LED_Green(OFF);    
+            osDelay(250);
+        }
     }
 }		/* -----  end of function calibrateEC  ----- */
 
@@ -418,7 +507,9 @@ static void calcT(void *argument)
     for (;;)
     {
         osEventFlagsWait(sens_evt_id, SENSORS_FLAG_ADC_READY, osFlagsWaitAll, osWaitForever);
+
         temperature = 0.1 * ch1_mv / LM35_AMP_GAIN;
+
 	    osEventFlagsSet(sens_evt_id, SENSORS_FLAG_TEMPERATURE_READY);
     }   
 }
@@ -435,7 +526,9 @@ static void calcPH(void *argument)
     {
         osEventFlagsWait(sens_evt_id, SENSORS_FLAG_TEMPERATURE_READY, 
 			 osFlagsWaitAll, osWaitForever);
+
         pH = pH_slope * ch2_mv + pH_intercept;
+
 	    osEventFlagsSet(sens_evt_id, SENSORS_FLAG_PH_READY);
     }   
 }

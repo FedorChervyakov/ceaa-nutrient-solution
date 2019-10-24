@@ -62,14 +62,17 @@ EEErr_t EE_Write8(uint8_t i2c_addr, uint16_t data_addr, uint8_t *data, uint8_t l
     HAL_StatusTypeDef i2c_status = HAL_OK;
 
     osMutexAcquire(hi2c1_mx, osWaitForever);
+    osEventFlagsClear(evt_id, EE_FLAG_I2C_WRITE_CPLT);
     
     i2c_status = HAL_I2C_Mem_Write_DMA( &hi2c1, (uint16_t) i2c_addr,
-                                        data_addr, EE_MEM_ADDR_SIZE,
+                                        data_addr, I2C_MEMADD_SIZE_16BIT,
                                         data, (uint16_t) len);
     if (i2c_status != HAL_OK)
     {
         status = EE_ERR_WRITE;
     }
+
+    osDelay(50); 
 
     osEventFlagsWait(evt_id, EE_FLAG_I2C_WRITE_CPLT, osFlagsWaitAll, osWaitForever);
 
@@ -87,16 +90,17 @@ EEErr_t EE_Write8(uint8_t i2c_addr, uint16_t data_addr, uint8_t *data, uint8_t l
 EEErr_t EE_Read8(uint8_t i2c_addr, uint16_t data_addr, uint8_t *data, uint8_t len)
 {
     EEErr_t status = EE_OK;
-    HAL_StatusTypeDef i2c_status = HAL_OK;
 
     osMutexAcquire(hi2c1_mx, osWaitForever);
+    osEventFlagsClear(evt_id, EE_FLAG_I2C_READ_CPLT);
 
-    i2c_status = HAL_I2C_Mem_Read_DMA( &hi2c1, (uint16_t) i2c_addr,
-                                        data_addr, EE_MEM_ADDR_SIZE,
-                                        data, (uint16_t) len);
-    if (i2c_status != HAL_OK)
+    if (HAL_I2C_Mem_Read_DMA( &hi2c1, (uint16_t) i2c_addr,
+                              data_addr, I2C_MEMADD_SIZE_16BIT,
+                              data, (uint16_t) len) != HAL_OK)
     {
         status = EE_ERR_READ;
+        osMutexRelease(hi2c1_mx);
+        return status;
     }
 
     osEventFlagsWait(evt_id, EE_FLAG_I2C_READ_CPLT, osFlagsWaitAll, osWaitForever);
